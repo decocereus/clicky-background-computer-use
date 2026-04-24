@@ -1,0 +1,26 @@
+import AppKit
+import Foundation
+
+struct WindowGeometrySnapshot {
+    let target: ResolvedWindowTarget
+    let frameAppKit: CGRect
+    let frontmostBefore: String?
+    let notes: [String]
+}
+
+struct WindowGeometrySnapshotService {
+    private let resolver = WindowTargetResolver()
+
+    func snapshot(windowID: String) throws -> WindowGeometrySnapshot {
+        let frontmostBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let resolved = try resolver.resolve(windowID: windowID)
+        let liveFrame = AXHelpers.frame(resolved.window.element) ?? resolved.window.frameAppKit
+
+        return WindowGeometrySnapshot(
+            target: resolved,
+            frameAppKit: liveFrame.standardized,
+            frontmostBefore: frontmostBefore,
+            notes: resolved.notes
+        )
+    }
+}
