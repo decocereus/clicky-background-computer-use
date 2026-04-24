@@ -6,7 +6,9 @@ The runtime exposes a loopback HTTP API, reads window screenshots and Accessibil
 
 At rough parity with OpenAI Codex Computer Use plugin 
 
-<video src="./Demo.mov" controls muted playsinline width="100%"></video>
+[![BackgroundComputerUse demo](https://img.youtube.com/vi/RmB5Qntqb3Y/maxresdefault.jpg)](https://youtu.be/RmB5Qntqb3Y)
+
+[Watch the demo](https://youtu.be/RmB5Qntqb3Y)
 
 ## Start
 
@@ -156,3 +158,7 @@ Cursors are session-based. Reuse the same `cursor.id` across related actions to 
 ## License
 
 MIT
+
+---
+
+crafted by [cam](https://x.com/financialvice) and [anupam](https://x.com/anupambatra_) | [dubdubdub labs](https://www.dubdubdub.xyz/)
