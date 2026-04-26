@@ -19,14 +19,18 @@ struct SetValueRouteService {
         var notes: [String] = []
 
         guard let candidate = targetResolver.resolveTarget(
-            elementIndex: request.elementIndex,
+            request.target,
             in: capture,
             kind: .setValue
         ) else {
+            let failureSummary = targetResolver.targetResolutionFailureDescription(
+                for: request.target,
+                in: capture
+            )
             return response(
                 classification: .verifierAmbiguous,
                 failureDomain: .targeting,
-                summary: "No projected target matched elementIndex \(request.elementIndex).",
+                summary: failureSummary,
                 window: capture.envelope.response.window,
                 target: nil,
                 requestedValue: SetValueRequestedValueDTO(

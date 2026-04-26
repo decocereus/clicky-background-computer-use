@@ -54,7 +54,7 @@ enum SecondaryActionOutcomeReasonDTO: String, Encodable {
 }
 
 struct SecondaryActionRequestedDTO: Encodable {
-    let elementIndex: Int
+    let target: ActionTargetRequestDTO
     let label: String
     let actionID: String?
 }

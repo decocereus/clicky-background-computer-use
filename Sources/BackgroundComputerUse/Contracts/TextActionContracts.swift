@@ -23,7 +23,6 @@ enum TypeTextFocusAssistModeDTO: String, Decodable, Encodable {
 }
 
 struct AXActionTargetSnapshotDTO: Encodable {
-    let elementIndex: Int?
     let displayIndex: Int?
     let projectedIndex: Int
     let primaryCanonicalIndex: Int

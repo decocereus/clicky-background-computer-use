@@ -21,20 +21,20 @@ struct TypeTextRouteService {
         var notes: [String] = []
 
         let candidate: AXActionCandidate?
-        if let elementIndex = request.elementIndex {
+        if let target = request.target {
             candidate = targetResolver.resolveTarget(
-                elementIndex: elementIndex,
+                target,
                 in: capture,
                 kind: .typeText
             )
         } else {
             candidate = targetResolver.resolveFocusedTextEntryTarget(in: capture)
-            notes.append("No elementIndex was supplied; type_text used the focused text-entry target fallback.")
+            notes.append("No target was supplied; type_text used the focused text-entry target fallback.")
         }
 
         guard let candidate else {
-            let summary = request.elementIndex.map {
-                "No projected text-entry target matched elementIndex \($0)."
+            let summary = request.target.map {
+                targetResolver.targetResolutionFailureDescription(for: $0, in: capture)
             } ?? "No focused text-entry target was available for type_text."
             return response(
                 classification: .verifierAmbiguous,

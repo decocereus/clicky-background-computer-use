@@ -36,6 +36,35 @@ final class APIDocumentationTests: XCTestCase {
         XCTAssertTrue(errors.contains { $0["error"] as? String == "window_not_found" })
     }
 
+    func testActionRoutesDocumentCanonicalTargetOnly() throws {
+        let response = RouteListResponse(
+            contractVersion: ContractVersion.current,
+            guide: APIDocumentation.guide,
+            routes: RouteRegistry.publicRoutes()
+        )
+
+        let data = try JSONSupport.encoder.encode(response)
+        let encoded = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        let removedFieldName = "element" + "Index"
+        XCTAssertFalse(encoded.contains(removedFieldName))
+
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let routes = try XCTUnwrap(json["routes"] as? [[String: Any]])
+        for routeID in [
+            RouteID.click.rawValue,
+            RouteID.scroll.rawValue,
+            RouteID.performSecondaryAction.rawValue,
+            RouteID.typeText.rawValue,
+            RouteID.setValue.rawValue
+        ] {
+            let route = try XCTUnwrap(routes.first { $0["id"] as? String == routeID })
+            let request = try XCTUnwrap(route["request"] as? [String: Any])
+            let fields = try XCTUnwrap(request["fields"] as? [[String: Any]])
+            XCTAssertTrue(fields.contains { $0["name"] as? String == "target" }, routeID)
+        }
+    }
+
     func testInvalidRequestErrorIsVersionedAndActionable() throws {
         let request = try makeRequest(
             method: "POST",
@@ -79,6 +108,9 @@ final class APIDocumentationTests: XCTestCase {
             throw TestRequestError.parseFailed
         case .invalid:
             XCTFail("Request parser returned invalid")
+            throw TestRequestError.parseFailed
+        case .tooLarge:
+            XCTFail("Request parser rejected the fixture as too large")
             throw TestRequestError.parseFailed
         }
     }

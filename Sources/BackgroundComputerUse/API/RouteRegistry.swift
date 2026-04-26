@@ -101,7 +101,7 @@ enum RouteRegistry {
                 notes: ["Discovery routes should remain independent of any one window lane."]
             ),
             implementationStatus: .implemented,
-            notes: ["Discovery is now live through Discovery/ and coordinated by the shared-read runtime lane."]
+            notes: ["Discovery routes are coordinated by the shared-read runtime lane."]
         ),
         RouteDescriptorDTO(
             id: RouteID.listWindows.rawValue,
@@ -119,7 +119,7 @@ enum RouteRegistry {
                 notes: ["Window enumeration should stay outside per-window write lanes."]
             ),
             implementationStatus: .implemented,
-            notes: ["Stable derived window IDs are now issued from Window/ using bundle ID, pid, launch date, and window number."]
+            notes: ["Stable derived window IDs use bundle ID, pid, launch date, and window number."]
         ),
         RouteDescriptorDTO(
             id: RouteID.getWindowState.rawValue,
@@ -147,11 +147,11 @@ enum RouteRegistry {
             method: "POST",
             path: "/v1/click",
             category: "action",
-            summary: "Dispatch a click against an element index or screenshot coordinate and return refreshed state.",
+            summary: "Dispatch a click against a semantic target or screenshot coordinate and return refreshed state.",
             execution: actionPolicy(lane: .windowWrite, mainThreadBehavior: .avoid),
             implementationStatus: .implemented,
             notes: [
-                "Production implementation uses semantic AX first for eligible element targets, then native target-only SLPS/SLEvent background pointer dispatch for element-derived and direct x/y coordinates.",
+                "Uses semantic AX first for eligible targets, then native target-only SLPS/SLEvent background pointer dispatch for target-derived and direct x/y coordinates.",
                 "Coordinate clicks default to a single click; double-click is used only when explicitly requested.",
                 "Right and middle mouse buttons are reported as unsupported rather than mapped to hidden secondary/default actions."
             ]
@@ -161,11 +161,11 @@ enum RouteRegistry {
             method: "POST",
             path: "/v1/scroll",
             category: "action",
-            summary: "Dispatch a scroll action against a target element and return refreshed state.",
+            summary: "Dispatch a scroll action against a semantic target and return refreshed state.",
             execution: actionPolicy(lane: .windowWrite, mainThreadBehavior: .avoid),
             implementationStatus: .implemented,
             notes: [
-                "Production implementation ports the validated runtime-ready scroll surface: ranked target/ancestor panes, early surface classification, AX ladder dispatch, targeted routed wheel fallback, vertical post_to_pid paging fallback, cursor approach, and reread verification.",
+                "Ranks the target and ancestor panes, classifies the surface, tries AX dispatch first, then uses targeted wheel or process-scoped paging fallbacks with reread verification.",
                 "The route preserves honest classifications including success, boundary, unsupported, unresolved, and verifier_ambiguous."
             ]
         ),
@@ -174,11 +174,11 @@ enum RouteRegistry {
             method: "POST",
             path: "/v1/perform_secondary_action",
             category: "action",
-            summary: "Dispatch an exposed secondary action label against a target element and return verification evidence.",
+            summary: "Dispatch an exposed secondary action label against a semantic target and return verification evidence.",
             execution: actionPolicy(lane: .windowWrite, mainThreadBehavior: .avoid),
             implementationStatus: .implemented,
             notes: [
-                "Dispatches a target element plus exact public secondary-action label.",
+                "Dispatches an exact public secondary-action label against the requested semantic target.",
                 "Dispatch is AX-only through captured action bindings; no LaunchServices, shell open, primary click, typing, keypress, or file-open fallback is used.",
                 "Outcome classification is verifier-first. transports[].rawAXStatus is diagnostic AX telemetry and can report an error even when the requested effect verifies."
             ]
@@ -222,7 +222,7 @@ enum RouteRegistry {
             execution: actionPolicy(lane: .windowWrite, mainThreadBehavior: .avoid),
             implementationStatus: .implemented,
             notes: [
-                "Production implementation ports the validated type-text foundation: Unicode CGEvent postToPid, optional AX focus/caret assist, cursor approach, and AXPipelineV2 read-act-read verification.",
+                "Uses Unicode CGEvent postToPid, optional AX focus/caret assist, cursor approach, and read-act-read verification.",
                 "Default focusAssistMode is none; no app/window focus restacking or Return submission is hidden inside the route."
             ]
         ),
@@ -249,7 +249,7 @@ enum RouteRegistry {
             execution: actionPolicy(lane: .windowWrite, mainThreadBehavior: .avoid),
             implementationStatus: .implemented,
             notes: [
-                "Production implementation ports the validated set-value foundation: direct AXUIElementSetAttributeValue(kAXValueAttribute), typed coercion, cursor approach, settle, reread, and exact-value verification.",
+                "Uses direct AXUIElementSetAttributeValue(kAXValueAttribute), typed coercion, cursor approach, settle, reread, and exact-value verification.",
                 "set_value does not type, focus, press Return, submit, or auto-confirm.",
                 "Outcome classification is verifier-first. rawAXStatus is diagnostic AX telemetry and does not by itself decide success or failure."
             ]
@@ -327,7 +327,10 @@ enum RouteRegistry {
             return json([
                 field("window", "string", required: true),
                 field("stateToken", "string"),
-                field("elementIndex", "integer", required: true),
+                actionTargetField(
+                    required: true,
+                    "Semantic target from get_window_state. Prefer node_id or refetch_fingerprint when available; display_index uses the rendered tree line number."
+                ),
                 field("direction", "up | down | left | right", required: true),
                 field("pages", "integer"),
                 field("verificationMode", "strict | fast"),
@@ -341,7 +344,10 @@ enum RouteRegistry {
             return json([
                 field("window", "string", required: true),
                 field("stateToken", "string"),
-                field("elementIndex", "integer", required: true),
+                actionTargetField(
+                    required: true,
+                    "Semantic target whose secondaryActions or secondaryActionBindings include the requested label."
+                ),
                 field("action", "string", required: true, "Exact public label from the target node's secondaryActions array."),
                 field("actionID", "string", "Optional stable descriptor ID from secondaryActionBindings; resolves before label fallback."),
                 field("menuPath", "string[]", "Optional menu path to open during the pre-action read, e.g. [\"File\"]."),
@@ -381,7 +387,10 @@ enum RouteRegistry {
             return json([
                 field("window", "string", required: true),
                 field("stateToken", "string"),
-                field("elementIndex", "integer"),
+                actionTargetField(
+                    required: false,
+                    "Optional semantic text-entry target. Omit to type into the current focused text entry."
+                ),
                 field("text", "string", required: true),
                 field("focusAssistMode", "none | focus | focus_and_caret_end", defaultValue: "none"),
                 field("cursor", "CursorRequest"),
@@ -405,7 +414,10 @@ enum RouteRegistry {
             return json([
                 field("window", "string", required: true),
                 field("stateToken", "string"),
-                field("elementIndex", "integer", required: true),
+                actionTargetField(
+                    required: true,
+                    "Semantic target that reports value-set support."
+                ),
                 field("value", "string", required: true),
                 field("cursor", "CursorRequest"),
                 field("includeMenuBar", "boolean"),
@@ -518,9 +530,12 @@ enum RouteRegistry {
         json([
             field("window", "string", required: true),
             field("stateToken", "string"),
-            field("elementIndex", "integer", "Element index from get_window_state. Mutually exclusive with x/y."),
-            field("x", "number", "Model-facing screenshot x coordinate. Must be supplied with y and without elementIndex."),
-            field("y", "number", "Model-facing screenshot y coordinate. Must be supplied with x and without elementIndex."),
+            actionTargetField(
+                required: false,
+                "Semantic target from get_window_state. Mutually exclusive with x/y."
+            ),
+            field("x", "number", "Model-facing screenshot x coordinate. Must be supplied with y and without target."),
+            field("y", "number", "Model-facing screenshot y coordinate. Must be supplied with x and without target."),
             field("mode", "single | double", "Explicit click mode. Omitted mode defaults to single.", defaultValue: "single"),
             field("clickCount", "integer", "Explicit exact click count. Supported values are 1 and 2."),
             field("mouseButton", "left | right | middle", defaultValue: "left"),
@@ -687,6 +702,18 @@ enum RouteRegistry {
             required: required,
             description: description,
             defaultValue: defaultValue
+        )
+    }
+
+    private static func actionTargetField(
+        required: Bool,
+        _ description: String
+    ) -> RouteFieldDTO {
+        field(
+            "target",
+            #"{"kind":"display_index"|"node_id"|"refetch_fingerprint","value":integer|string}"#,
+            required: required,
+            description
         )
     }
 

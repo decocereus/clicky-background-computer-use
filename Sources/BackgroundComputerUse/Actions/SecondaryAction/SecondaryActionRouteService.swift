@@ -44,7 +44,7 @@ struct SecondaryActionRouteService {
             maxNodes: request.maxNodes ?? 6500
         )
         let requested = SecondaryActionRequestedDTO(
-            elementIndex: request.elementIndex,
+            target: request.target,
             label: request.action,
             actionID: request.actionID
         )
@@ -58,20 +58,24 @@ struct SecondaryActionRouteService {
         ]
 
         guard let surfaceNode = targetResolver.resolveSurfaceNode(
-            elementIndex: request.elementIndex,
+            target: request.target,
             in: capture
         ) else {
+            let failureSummary = targetResolver.targetResolutionFailureDescription(
+                for: request.target,
+                in: capture
+            )
             return response(
                 classification: .verifierAmbiguous,
                 failureDomain: .targeting,
-                summary: "No projected target matched elementIndex \(request.elementIndex).",
+                summary: failureSummary,
                 window: capture.envelope.response.window,
                 requestedAction: requested,
                 action: nil,
                 outcome: outcome(
                     status: .targetUnresolved,
                     reason: .liveTargetUnresolved,
-                    detail: "No projected target matched elementIndex \(request.elementIndex)."
+                    detail: failureSummary
                 ),
                 target: nil,
                 dispatchTarget: nil,
@@ -92,7 +96,6 @@ struct SecondaryActionRouteService {
 
         let target = targetResolver.targetSnapshot(
             for: surfaceNode,
-            elementIndex: request.elementIndex,
             in: capture
         )
 

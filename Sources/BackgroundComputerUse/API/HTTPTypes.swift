@@ -13,10 +13,19 @@ enum HTTPMethod: String {
 enum HTTPRequestParseResult {
     case incomplete
     case invalid
+    case tooLarge
     case complete(HTTPRequest)
 }
 
 struct HTTPRequest {
+    private static let maximumHeaderBytes = 64 * 1024
+    private static let maximumBodyBytes = 10 * 1024 * 1024
+    private static let singletonHeaders: Set<String> = [
+        "content-length",
+        "content-type",
+        "host"
+    ]
+
     let method: HTTPMethod
     let path: String
     let queryItems: [URLQueryItem]
@@ -26,7 +35,13 @@ struct HTTPRequest {
     static func parse(_ data: Data) -> HTTPRequestParseResult {
         let separator = Data("\r\n\r\n".utf8)
         guard let headerRange = data.range(of: separator) else {
+            if data.count > maximumHeaderBytes {
+                return .tooLarge
+            }
             return .incomplete
+        }
+        guard headerRange.lowerBound <= maximumHeaderBytes else {
+            return .tooLarge
         }
 
         let headerData = data.subdata(in: 0..<headerRange.lowerBound)
@@ -47,24 +62,44 @@ struct HTTPRequest {
         let method = HTTPMethod(token: String(requestLineParts[0]))
         let rawPath = String(requestLineParts[1])
         let url = URL(string: "http://127.0.0.1\(rawPath)")
-        let headers = Dictionary(
-            uniqueKeysWithValues: headerLines.dropFirst().compactMap { line -> (String, String)? in
-                let pair = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-                guard pair.count == 2 else { return nil }
-                return (
-                    String(pair[0]).trimmingCharacters(in: .whitespacesAndNewlines),
-                    String(pair[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-                )
+
+        var headers: [String: String] = [:]
+        var canonicalHeaderNames: [String: String] = [:]
+        for line in headerLines.dropFirst() {
+            let pair = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard pair.count == 2 else {
+                return .invalid
             }
-        )
-        let normalizedHeaders = Dictionary(
-            uniqueKeysWithValues: headers.map { key, value in
-                (key.lowercased(), value)
+
+            let rawName = String(pair[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = String(pair[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard rawName.isEmpty == false else {
+                return .invalid
             }
-        )
+
+            let normalizedName = rawName.lowercased()
+            if let existingName = canonicalHeaderNames[normalizedName] {
+                if singletonHeaders.contains(normalizedName) {
+                    return .invalid
+                }
+                headers[existingName] = [headers[existingName], value]
+                    .compactMap { $0 }
+                    .joined(separator: ", ")
+            } else {
+                canonicalHeaderNames[normalizedName] = rawName
+                headers[rawName] = value
+            }
+        }
+
+        let normalizedHeaders = Dictionary(uniqueKeysWithValues: headers.map { key, value in
+            (key.lowercased(), value)
+        })
         let contentLengthValue = normalizedHeaders["content-length"] ?? "0"
         guard let contentLength = Int(contentLengthValue), contentLength >= 0 else {
             return .invalid
+        }
+        guard contentLength <= maximumBodyBytes else {
+            return .tooLarge
         }
         let bodyStart = headerRange.upperBound
         let availableBodyLength = data.count - bodyStart

@@ -122,6 +122,9 @@ final class LoopbackServer: @unchecked Sendable {
                     on: connection,
                     message: "Unable to parse the incoming HTTP request."
                 )
+
+            case .tooLarge:
+                self.sendPayloadTooLarge(on: connection)
             }
         }
     }
@@ -148,6 +151,25 @@ final class LoopbackServer: @unchecked Sendable {
         )
         connection.send(content: response.serialized(), completion: .contentProcessed { _ in
                 connection.cancel()
+        })
+    }
+
+    private func sendPayloadTooLarge(on connection: NWConnection) {
+        let response = HTTPResponse.json(
+            ErrorResponse(
+                error: "payload_too_large",
+                message: "The HTTP request exceeded the runtime's header or body size limits.",
+                requestID: UUID().uuidString,
+                recovery: [
+                    "Send a smaller JSON payload.",
+                    "For screenshots and large state reads, request imageMode path instead of base64 when possible."
+                ]
+            ),
+            statusCode: 413,
+            reasonPhrase: "Payload Too Large"
+        )
+        connection.send(content: response.serialized(), completion: .contentProcessed { _ in
+            connection.cancel()
         })
     }
 }

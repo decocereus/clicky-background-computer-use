@@ -7,7 +7,7 @@ enum APIDocumentation {
             "Call GET /v1/bootstrap first. Use baseURL from the response or runtime manifest and stop if instructions.ready is false.",
             "Call GET /v1/routes for the complete route catalog, request fields, response fields, execution policy, examples, and error codes.",
             "Call POST /v1/list_apps to find a target app, then POST /v1/list_windows with an app name or bundle ID.",
-            "Call POST /v1/get_window_state with a window ID and imageMode path or base64. Use the screenshot as visual ground truth and the projected tree for semantic elementIndex targets.",
+            "Call POST /v1/get_window_state with a window ID and imageMode path or base64. Use the screenshot as visual ground truth and the projected tree for semantic targets.",
             "Call one action route. Reuse stateToken when available, pass a cursor object if you want a visible agent cursor, then read state again before planning the next meaningful action."
         ],
         concepts: [
@@ -22,9 +22,12 @@ enum APIDocumentation {
                 fields: nil
             ),
             APIConceptDTO(
-                name: "elementIndex",
-                description: "Model-facing target index from the projected tree in get_window_state. Refresh state after actions because indices can change with the UI.",
-                fields: nil
+                name: "target",
+                description: "Semantic action target from get_window_state. Use {\"kind\":\"display_index\",\"value\":N} for a rendered line, {\"kind\":\"node_id\",\"value\":\"...\"} for a stable node, or {\"kind\":\"refetch_fingerprint\",\"value\":\"...\"} when node_id is unavailable. Refresh state after actions because labels, titles, and layout can change.",
+                fields: [
+                    RouteFieldDTO(name: "kind", type: "display_index | node_id | refetch_fingerprint", required: true, description: "How the route should resolve the target.", defaultValue: nil),
+                    RouteFieldDTO(name: "value", type: "integer | string", required: true, description: "Integer for display_index; string for node_id and refetch_fingerprint.", defaultValue: nil),
+                ]
             ),
             APIConceptDTO(
                 name: "imageMode",
@@ -113,24 +116,24 @@ enum APIDocumentation {
                 whenToUse: "Read the current visual and semantic state of a window before planning or verifying actions.",
                 useAfter: ["Call list_windows and choose a live windowID."],
                 successSignals: ["stateToken, screenshot, tree, focusedElement, backgroundSafety, and notes are returned."],
-                nextSteps: ["Pick an elementIndex or screenshot coordinate, then call an action route."],
+                nextSteps: ["Pick a semantic target or screenshot coordinate, then call an action route."],
                 exampleRequest: #"{"window":"WINDOW_ID","imageMode":"path","maxNodes":6500}"#
             )
         case .click:
             return usage(
-                whenToUse: "Activate a UI target by elementIndex, or click a point in model-facing screenshot coordinates.",
-                useAfter: ["Call get_window_state and identify an elementIndex or x/y coordinate."],
+                whenToUse: "Activate a UI target by semantic target, or click a point in model-facing screenshot coordinates.",
+                useAfter: ["Call get_window_state and identify a target or x/y coordinate."],
                 successSignals: ["ok=true and classification=success, or inspect summary/failureDomain when ok=false."],
                 nextSteps: ["Read get_window_state again when the UI may have changed."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","elementIndex":12,"clickCount":1,"imageMode":"path"}"#
+                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":12},"clickCount":1,"imageMode":"path"}"#
             )
         case .scroll:
             return usage(
                 whenToUse: "Scroll a specific semantic element or scrollable ancestor in a direction.",
-                useAfter: ["Call get_window_state and choose an elementIndex in or near the scrollable region."],
+                useAfter: ["Call get_window_state and choose a target in or near the scrollable region."],
                 successSignals: ["classification=success for movement, boundary for a real edge, or issueBucket explains unresolved failures."],
                 nextSteps: ["Use postStateToken or read state again before targeting newly visible content."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","elementIndex":20,"direction":"down","pages":1,"imageMode":"path"}"#
+                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":20},"direction":"down","pages":1,"imageMode":"path"}"#
             )
         case .performSecondaryAction:
             return usage(
@@ -138,7 +141,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and read the target node's secondaryActions or secondaryActionBindings."],
                 successSignals: ["ok=true and outcome.status indicates the expected effect was verified or accepted."],
                 nextSteps: ["Inspect postState or read state again, especially for menus or visual changes."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","elementIndex":8,"action":"Close","imageMode":"path"}"#
+                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":8},"action":"Close","imageMode":"path"}"#
             )
         case .drag:
             return usage(
@@ -167,10 +170,10 @@ enum APIDocumentation {
         case .typeText:
             return usage(
                 whenToUse: "Insert text into a focused text entry or a specific text-entry element.",
-                useAfter: ["Call get_window_state and identify a text entry elementIndex, or deliberately rely on the current focused element."],
+                useAfter: ["Call get_window_state and identify a text-entry target, or deliberately rely on the current focused element."],
                 successSignals: ["ok=true and verification exact value or selection evidence matches the requested text."],
                 nextSteps: ["Use press_key for explicit Return/Tab submission; type_text does not auto-submit."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","elementIndex":4,"text":"hello","focusAssistMode":"focus_and_caret_end","imageMode":"path"}"#
+                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"text":"hello","focusAssistMode":"focus_and_caret_end","imageMode":"path"}"#
             )
         case .pressKey:
             return usage(
@@ -183,10 +186,10 @@ enum APIDocumentation {
         case .setValue:
             return usage(
                 whenToUse: "Set a value directly through Accessibility on a semantic replacement target.",
-                useAfter: ["Call get_window_state and choose an elementIndex whose node reports value-set support."],
+                useAfter: ["Call get_window_state and choose a target whose node reports value-set support."],
                 successSignals: ["ok=true and verification exactValueMatch is true."],
                 nextSteps: ["Use type_text instead when you need keystroke semantics, focus movement, autocomplete, or submission behavior."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","elementIndex":4,"value":"hello","imageMode":"path"}"#
+                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"value":"hello","imageMode":"path"}"#
             )
         }
     }

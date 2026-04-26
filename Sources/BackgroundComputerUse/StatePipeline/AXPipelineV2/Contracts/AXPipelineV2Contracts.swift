@@ -186,7 +186,6 @@ public struct AXAffordanceDTO: Codable, Equatable {
 }
 
 public struct AXSecondaryActionBindingTargetDTO: Codable {
-    public let elementIndex: Int?
     public let displayIndex: Int?
     public let projectedIndex: Int
     public let primaryCanonicalIndex: Int?

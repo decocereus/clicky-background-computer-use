@@ -703,7 +703,6 @@ private final class ProjectionContext {
         )
         let visibility = exposure == "model_visible" ? "public" : (exposure == "debug_only" ? "debug_only" : "internal")
         let target = AXSecondaryActionBindingTargetDTO(
-            elementIndex: projectedIndex,
             displayIndex: nil,
             projectedIndex: projectedIndex,
             primaryCanonicalIndex: rawNode.index,

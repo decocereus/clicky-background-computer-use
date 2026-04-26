@@ -123,12 +123,12 @@ curl -s -X POST "$BASE/v1/get_window_state" \
   -d '{"window":"WINDOW_ID","imageMode":"path","maxNodes":6500}' | python3 -m json.tool
 ```
 
-Click by element:
+Click by semantic target:
 
 ```bash
 curl -s -X POST "$BASE/v1/click" \
   -H 'content-type: application/json' \
-  -d '{"window":"WINDOW_ID","elementIndex":12,"clickCount":1,"imageMode":"path"}' | python3 -m json.tool
+  -d '{"window":"WINDOW_ID","target":{"kind":"display_index","value":12},"clickCount":1,"imageMode":"path"}' | python3 -m json.tool
 ```
 
 Click by screenshot coordinate:
@@ -144,7 +144,7 @@ Type into a text target:
 ```bash
 curl -s -X POST "$BASE/v1/type_text" \
   -H 'content-type: application/json' \
-  -d '{"window":"WINDOW_ID","elementIndex":4,"text":"hello","focusAssistMode":"focus_and_caret_end","imageMode":"path"}' | python3 -m json.tool
+  -d '{"window":"WINDOW_ID","target":{"kind":"display_index","value":4},"text":"hello","focusAssistMode":"focus_and_caret_end","imageMode":"path"}' | python3 -m json.tool
 ```
 
 Use the optional `cursor` object on action routes to show an on-screen agent cursor:

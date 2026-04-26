@@ -14,7 +14,6 @@ struct AXActionStateCapture {
 }
 
 struct AXActionTargetSnapshot {
-    let elementIndex: Int?
     let displayIndex: Int?
     let projectedIndex: Int
     let primaryCanonicalIndex: Int
@@ -46,7 +45,6 @@ struct AXActionTargetSnapshot {
 
     var dto: AXActionTargetSnapshotDTO {
         AXActionTargetSnapshotDTO(
-            elementIndex: elementIndex,
             displayIndex: displayIndex,
             projectedIndex: projectedIndex,
             primaryCanonicalIndex: primaryCanonicalIndex,
@@ -172,14 +170,14 @@ struct AXActionTargetResolver {
     }
 
     func resolveTarget(
-        elementIndex: Int,
+        _ requestedTarget: ActionTargetRequestDTO,
         in capture: AXActionStateCapture,
         kind: AXActionTargetKind
     ) -> AXActionCandidate? {
-        guard let surfaceNode = surfaceNode(forElementIndex: elementIndex, in: capture) else {
+        guard let surfaceNode = resolveSurfaceNode(target: requestedTarget, in: capture) else {
             return nil
         }
-        let target = makeTargetSnapshot(surfaceNode: surfaceNode, elementIndex: elementIndex, capture: capture)
+        let target = makeTargetSnapshot(surfaceNode: surfaceNode, capture: capture)
         let semantic = semanticSuitability(for: target, kind: kind)
         return AXActionCandidate(
             score: 10_000,
@@ -190,18 +188,58 @@ struct AXActionTargetResolver {
     }
 
     func resolveSurfaceNode(
-        elementIndex: Int,
+        target requestedTarget: ActionTargetRequestDTO,
         in capture: AXActionStateCapture
     ) -> AXPipelineV2SurfaceNodeDTO? {
-        surfaceNode(forElementIndex: elementIndex, in: capture)
+        switch requestedTarget.kind {
+        case .displayIndex:
+            guard let displayIndex = requestedTarget.displayIndex else {
+                return nil
+            }
+            return surfaceNode(displayIndex: displayIndex, in: capture)
+        case .nodeID:
+            let matches = capture.envelope.response.tree.nodes.filter { $0.nodeID == requestedTarget.value }
+            return matches.only
+        case .refetchFingerprint:
+            let matches = capture.envelope.response.tree.nodes.filter { $0.refetchFingerprint == requestedTarget.value }
+            return matches.only
+        }
+    }
+
+    func resolveSurfaceNode(
+        projectedIndex: Int,
+        in capture: AXActionStateCapture
+    ) -> AXPipelineV2SurfaceNodeDTO? {
+        surfaceNode(projectedIndex: projectedIndex, in: capture)
+    }
+
+    func targetResolutionFailureDescription(
+        for requestedTarget: ActionTargetRequestDTO,
+        in capture: AXActionStateCapture
+    ) -> String {
+        switch requestedTarget.kind {
+        case .displayIndex:
+            return "No rendered target matched \(requestedTarget.summary)."
+        case .nodeID:
+            let matchCount = capture.envelope.response.tree.nodes.filter { $0.nodeID == requestedTarget.value }.count
+            if matchCount > 1 {
+                return "\(requestedTarget.summary) matched \(matchCount) projected nodes; use display_index from the current rendered tree."
+            }
+            return "No projected target matched \(requestedTarget.summary)."
+        case .refetchFingerprint:
+            let matchCount = capture.envelope.response.tree.nodes.filter { $0.refetchFingerprint == requestedTarget.value }.count
+            if matchCount > 1 {
+                return "\(requestedTarget.summary) matched \(matchCount) projected nodes; use display_index or node_id from the current rendered tree."
+            }
+            return "No projected target matched \(requestedTarget.summary)."
+        }
     }
 
     func targetSnapshot(
         for surfaceNode: AXPipelineV2SurfaceNodeDTO,
-        elementIndex: Int?,
         in capture: AXActionStateCapture
     ) -> AXActionTargetSnapshot {
-        makeTargetSnapshot(surfaceNode: surfaceNode, elementIndex: elementIndex, capture: capture)
+        makeTargetSnapshot(surfaceNode: surfaceNode, capture: capture)
     }
 
     func targetSnapshot(
@@ -238,11 +276,7 @@ struct AXActionTargetResolver {
         while remaining > 0, let resolved = cursor {
             results.append((
                 node: resolved,
-                target: makeTargetSnapshot(
-                    surfaceNode: resolved,
-                    elementIndex: resolved.displayIndex ?? capture.displayIndexByProjectedIndex[resolved.projectedIndex],
-                    capture: capture
-                )
+                target: makeTargetSnapshot(surfaceNode: resolved, capture: capture)
             ))
             cursor = resolved.parentIndex.flatMap { self.surfaceNode(projectedIndex: $0, in: capture) }
             remaining -= 1
@@ -258,8 +292,7 @@ struct AXActionTargetResolver {
         let focusedCanonicalIndex = capture.envelope.diagnostics.focusedCanonicalIndex
 
         let candidates = capture.envelope.response.tree.nodes.compactMap { surfaceNode -> AXActionCandidate? in
-            let displayIndex = capture.displayIndexByProjectedIndex[surfaceNode.projectedIndex] ?? surfaceNode.displayIndex
-            let target = makeTargetSnapshot(surfaceNode: surfaceNode, elementIndex: displayIndex, capture: capture)
+            let target = makeTargetSnapshot(surfaceNode: surfaceNode, capture: capture)
             let isFocused =
                 target.isFocused ||
                 (focusedNodeID != nil && target.nodeID == focusedNodeID) ||
@@ -307,8 +340,7 @@ struct AXActionTargetResolver {
 
     func resolveUnambiguousTextEntryTarget(in capture: AXActionStateCapture) -> AXActionCandidate? {
         let candidates = capture.envelope.response.tree.nodes.compactMap { surfaceNode -> AXActionCandidate? in
-            let displayIndex = capture.displayIndexByProjectedIndex[surfaceNode.projectedIndex] ?? surfaceNode.displayIndex
-            let target = makeTargetSnapshot(surfaceNode: surfaceNode, elementIndex: displayIndex, capture: capture)
+            let target = makeTargetSnapshot(surfaceNode: surfaceNode, capture: capture)
             let semantic = semanticSuitability(for: target, kind: .typeText)
             guard semantic.appropriate else {
                 return nil
@@ -351,18 +383,18 @@ struct AXActionTargetResolver {
     ) -> (target: AXActionTargetSnapshot?, strategy: String?) {
         if let nodeID = prior.nodeID,
            let matched = capture.envelope.response.tree.nodes.first(where: { $0.nodeID == nodeID }) {
-            return (makeTargetSnapshot(surfaceNode: matched, elementIndex: prior.elementIndex, capture: capture), "node_id")
+            return (makeTargetSnapshot(surfaceNode: matched, capture: capture), "node_id")
         }
 
         if let fingerprint = prior.refetchFingerprint {
             let matches = capture.envelope.response.tree.nodes.filter { $0.refetchFingerprint == fingerprint }
             if let unique = matches.only {
-                return (makeTargetSnapshot(surfaceNode: unique, elementIndex: prior.elementIndex, capture: capture), "refetch_fingerprint")
+                return (makeTargetSnapshot(surfaceNode: unique, capture: capture), "refetch_fingerprint")
             }
             if let best = matches.max(by: { lhs, rhs in
                 refreshedSimilarityScore(lhs, prior: prior, kind: kind) < refreshedSimilarityScore(rhs, prior: prior, kind: kind)
             }), refreshedSimilarityScore(best, prior: prior, kind: kind) >= 120 {
-                return (makeTargetSnapshot(surfaceNode: best, elementIndex: prior.elementIndex, capture: capture), "refetch_fingerprint_signature")
+                return (makeTargetSnapshot(surfaceNode: best, capture: capture), "refetch_fingerprint_signature")
             }
         }
 
@@ -370,12 +402,12 @@ struct AXActionTargetResolver {
            let mapping = capture.envelope.response.tree.lineMappings.first(where: { $0.displayIndex == displayIndex }),
            let matched = surfaceNode(projectedIndex: mapping.projectedIndex, in: capture),
            refreshedSimilarityScore(matched, prior: prior, kind: kind) >= 80 {
-            return (makeTargetSnapshot(surfaceNode: matched, elementIndex: prior.elementIndex, capture: capture), "display_index_signature")
+            return (makeTargetSnapshot(surfaceNode: matched, capture: capture), "display_index_signature")
         }
 
         if let matched = surfaceNode(projectedIndex: prior.projectedIndex, in: capture),
            refreshedSimilarityScore(matched, prior: prior, kind: kind) >= 100 {
-            return (makeTargetSnapshot(surfaceNode: matched, elementIndex: prior.elementIndex, capture: capture), "projected_index_signature")
+            return (makeTargetSnapshot(surfaceNode: matched, capture: capture), "projected_index_signature")
         }
 
         return (nil, nil)
@@ -552,17 +584,13 @@ struct AXActionTargetResolver {
         }
     }
 
-    private func surfaceNode(forElementIndex elementIndex: Int, in capture: AXActionStateCapture) -> AXPipelineV2SurfaceNodeDTO? {
-        if let mapping = capture.envelope.response.tree.lineMappings.first(where: { $0.displayIndex == elementIndex }),
+    private func surfaceNode(displayIndex: Int, in capture: AXActionStateCapture) -> AXPipelineV2SurfaceNodeDTO? {
+        if let mapping = capture.envelope.response.tree.lineMappings.first(where: { $0.displayIndex == displayIndex }),
            let matched = surfaceNode(projectedIndex: mapping.projectedIndex, in: capture) {
             return matched
         }
 
-        if let matched = surfaceNode(projectedIndex: elementIndex, in: capture) {
-            return matched
-        }
-
-        return capture.envelope.response.tree.nodes[safe: elementIndex]
+        return capture.envelope.response.tree.nodes.first { $0.displayIndex == displayIndex }
     }
 
     private func surfaceNode(projectedIndex: Int, in capture: AXActionStateCapture) -> AXPipelineV2SurfaceNodeDTO? {
@@ -571,7 +599,6 @@ struct AXActionTargetResolver {
 
     private func makeTargetSnapshot(
         surfaceNode: AXPipelineV2SurfaceNodeDTO,
-        elementIndex: Int?,
         capture: AXActionStateCapture
     ) -> AXActionTargetSnapshot {
         let rawNode = capture.envelope.rawCapture.nodes[safe: surfaceNode.primaryCanonicalIndex]
@@ -580,7 +607,6 @@ struct AXActionTargetResolver {
         let displayIndex = capture.displayIndexByProjectedIndex[surfaceNode.projectedIndex] ?? surfaceNode.displayIndex
 
         return AXActionTargetSnapshot(
-            elementIndex: elementIndex,
             displayIndex: displayIndex,
             projectedIndex: surfaceNode.projectedIndex,
             primaryCanonicalIndex: surfaceNode.primaryCanonicalIndex,
@@ -614,7 +640,6 @@ struct AXActionTargetResolver {
 
     private func makeTargetSnapshot(rawNode: AXRawNodeDTO) -> AXActionTargetSnapshot {
         AXActionTargetSnapshot(
-            elementIndex: nil,
             displayIndex: nil,
             projectedIndex: rawNode.index,
             primaryCanonicalIndex: rawNode.index,

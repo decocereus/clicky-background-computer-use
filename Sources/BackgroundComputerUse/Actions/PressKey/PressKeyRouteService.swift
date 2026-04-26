@@ -844,11 +844,7 @@ private extension PressKeyRouteService {
 
     func searchFieldSnapshots(in capture: AXActionStateCapture) -> [AXActionTargetSnapshot] {
         capture.envelope.response.tree.nodes.compactMap { node in
-            let target = targetResolver.targetSnapshot(
-                for: node,
-                elementIndex: node.displayIndex ?? capture.displayIndexByProjectedIndex[node.projectedIndex],
-                in: capture
-            )
+            let target = targetResolver.targetSnapshot(for: node, in: capture)
             return targetLooksLikeCommandFindOrSearch(target) ? target : nil
         }
     }
@@ -877,7 +873,7 @@ private extension PressKeyRouteService {
             guard displayIndex == focusedIndex || node.projectedIndex == focusedIndex else {
                 return false
             }
-            let target = targetResolver.targetSnapshot(for: node, elementIndex: displayIndex, in: capture)
+            let target = targetResolver.targetSnapshot(for: node, in: capture)
             return targetLooksLikeCommandFindOrSearch(target)
         }
     }

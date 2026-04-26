@@ -1,7 +1,7 @@
 import Foundation
 
 enum ClickTargetKindDTO: String, Encodable {
-    case element
+    case semanticTarget = "semantic_target"
     case coordinate
 }
 
@@ -51,7 +51,7 @@ enum ClickModeDTO: String, Decodable, Encodable {
 
 struct ClickRequestedTargetDTO: Encodable {
     let kind: ClickTargetKindDTO
-    let elementIndex: Int?
+    let target: ActionTargetRequestDTO?
     let x: Double?
     let y: Double?
     let coordinateSpace: CoordinateSpaceName?

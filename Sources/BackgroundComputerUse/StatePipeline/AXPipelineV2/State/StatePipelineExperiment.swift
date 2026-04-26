@@ -127,9 +127,12 @@ public struct StatePipelineExperiment {
         )
         let stateToken = StateToken.make(
             windowID: windowID,
-            nodeCount: projectedTree.nodes.count,
-            focusedIndex: projectedTree.focusedProjectedIndex,
-            generatedAt: generatedAt
+            title: resolved.window.title,
+            frame: resolved.window.frameAppKit,
+            projectedTree: projectedTree,
+            selectionSummary: rawCapture.focusSelection,
+            pixelWidth: nil,
+            pixelHeight: nil
         )
 
         let frontmostAfter = NSWorkspace.shared.frontmostApplication
@@ -287,9 +290,12 @@ public struct StatePipelineExperiment {
         let windowID = resolved.windowID
         let stateToken = StateToken.make(
             windowID: windowID,
-            nodeCount: projectedTree.nodes.count,
-            focusedIndex: projectedTree.focusedProjectedIndex,
-            generatedAt: generatedAt
+            title: resolved.window.title,
+            frame: resolved.window.frameAppKit,
+            projectedTree: projectedTree,
+            selectionSummary: rawCapture.focusSelection,
+            pixelWidth: nil,
+            pixelHeight: nil
         )
 
         let frontmostAfter = NSWorkspace.shared.frontmostApplication
@@ -423,9 +429,17 @@ public struct StatePipelineExperiment {
         )
         let stateToken = StateToken.make(
             windowID: fixture.window.windowID,
-            nodeCount: projectedTree.nodes.count,
-            focusedIndex: projectedTree.focusedProjectedIndex,
-            generatedAt: Date()
+            title: fixture.window.title,
+            frame: CGRect(
+                x: fixture.window.frameAppKit.x,
+                y: fixture.window.frameAppKit.y,
+                width: fixture.window.frameAppKit.width,
+                height: fixture.window.frameAppKit.height
+            ),
+            projectedTree: projectedTree,
+            selectionSummary: replayPreparation.rawCapture.focusSelection,
+            pixelWidth: nil,
+            pixelHeight: nil
         )
         let screenshot = ScreenshotDTO(
             status: "fixture_replay",
@@ -639,7 +653,6 @@ public struct StatePipelineExperiment {
         }
         return bindings.map { binding in
             let target = AXSecondaryActionBindingTargetDTO(
-                elementIndex: displayIndex ?? binding.target.elementIndex,
                 displayIndex: displayIndex,
                 projectedIndex: binding.target.projectedIndex,
                 primaryCanonicalIndex: binding.target.primaryCanonicalIndex,

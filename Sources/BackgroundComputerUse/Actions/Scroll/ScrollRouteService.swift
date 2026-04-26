@@ -103,14 +103,18 @@ struct ScrollRouteService {
         let frontmostBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 
         guard let requestedNode = targetResolver.resolveSurfaceNode(
-            elementIndex: request.elementIndex,
+            target: request.target,
             in: capture
         ) else {
+            let failureSummary = targetResolver.targetResolutionFailureDescription(
+                for: request.target,
+                in: capture
+            )
             return response(
                 classification: .unresolved,
                 failureDomain: .targeting,
                 issueBucket: .targeting,
-                summary: "No projected scroll target matched elementIndex \(request.elementIndex).",
+                summary: failureSummary,
                 window: capture.envelope.response.window,
                 requestedTarget: nil,
                 chosenContainer: nil,
@@ -136,7 +140,6 @@ struct ScrollRouteService {
 
         let requestedTarget = targetResolver.targetSnapshot(
             for: requestedNode,
-            elementIndex: request.elementIndex,
             in: capture
         )
         let candidates = scoreContainerCandidates(for: requestedNode, in: capture)
@@ -152,7 +155,7 @@ struct ScrollRouteService {
                 classification: .unresolved,
                 failureDomain: .targeting,
                 issueBucket: .targeting,
-                summary: "No projected ancestor looked like a viable scroll container for elementIndex \(request.elementIndex).",
+                summary: "No projected ancestor looked like a viable scroll container for \(request.target.summary).",
                 window: capture.envelope.response.window,
                 requestedTarget: requestedTarget,
                 chosenContainer: nil,
@@ -956,7 +959,7 @@ struct ScrollRouteService {
             let liveAfter = matchedContainer.flatMap { node -> LiveContainerSnapshot? in
                 guard let afterCapture,
                       let resolved = try? targetResolver.resolveLiveElement(
-                        for: targetResolver.targetSnapshot(for: node, elementIndex: node.displayIndex, in: afterCapture),
+                        for: targetResolver.targetSnapshot(for: node, in: afterCapture),
                         in: afterCapture
                       ) else {
                     return nil
@@ -1823,7 +1826,7 @@ struct ScrollRouteService {
         }) {
             return match
         }
-        return targetResolver.resolveSurfaceNode(elementIndex: target.projectedIndex, in: capture)
+        return targetResolver.resolveSurfaceNode(projectedIndex: target.projectedIndex, in: capture)
     }
 
     private func isDescendant(
@@ -1834,13 +1837,13 @@ struct ScrollRouteService {
         if candidate.projectedIndex == ancestor.projectedIndex {
             return true
         }
-        var cursor = candidate.parentIndex.flatMap { targetResolver.resolveSurfaceNode(elementIndex: $0, in: capture) }
+        var cursor = candidate.parentIndex.flatMap { targetResolver.resolveSurfaceNode(projectedIndex: $0, in: capture) }
         var remaining = 18
         while remaining > 0, let resolved = cursor {
             if resolved.projectedIndex == ancestor.projectedIndex {
                 return true
             }
-            cursor = resolved.parentIndex.flatMap { targetResolver.resolveSurfaceNode(elementIndex: $0, in: capture) }
+            cursor = resolved.parentIndex.flatMap { targetResolver.resolveSurfaceNode(projectedIndex: $0, in: capture) }
             remaining -= 1
         }
         return false

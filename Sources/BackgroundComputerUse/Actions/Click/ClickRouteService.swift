@@ -59,7 +59,7 @@ struct ClickRouteService {
         let mouseButton = request.mouseButton ?? .left
         let frontmostBefore = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let notes = [
-            "click uses the production waterfall: semantic AX for eligible element targets, then element-derived or direct coordinate dispatch through native target-only SLPS/SLEvent background click transport.",
+            "click uses the production waterfall: semantic AX for eligible targets, then target-derived or direct coordinate dispatch through native target-only SLPS/SLEvent background click transport.",
             "perform_secondary_action remains a separate semantic route; click does not hide secondary/default-action fallbacks as pointer clicks."
         ]
 
@@ -139,14 +139,14 @@ struct ClickRouteService {
             )
         }
 
-        let hasElement = request.elementIndex != nil
+        let hasTarget = request.target != nil
         let hasCompleteCoordinate = request.x != nil && request.y != nil
         let hasPartialCoordinate = (request.x != nil) != (request.y != nil)
-        guard hasPartialCoordinate == false, hasElement != hasCompleteCoordinate else {
+        guard hasPartialCoordinate == false, hasTarget != hasCompleteCoordinate else {
             return response(
                 classification: .verifierAmbiguous,
                 failureDomain: .targeting,
-                summary: "Supply exactly one target form: elementIndex or both x and y.",
+                summary: "Supply exactly one target form: target or both x and y.",
                 window: capture.envelope.response.window,
                 requestedTarget: requestedTarget,
                 target: nil,
@@ -173,8 +173,8 @@ struct ClickRouteService {
             )
         }
 
-        if let elementIndex = request.elementIndex {
-            guard let clickCount = normalizedElementClickCount(request) else {
+        if let target = request.target {
+            guard let clickCount = normalizedTargetClickCount(request) else {
                 return invalidClickCountResponse(
                     request: request,
                     capture: capture,
@@ -183,13 +183,13 @@ struct ClickRouteService {
                     frontmostBefore: frontmostBefore,
                     warnings: warnings,
                     notes: notes,
-                    summary: "Element clickCount must be 1 or 2."
+                    summary: "Target clickCount must be 1 or 2."
                 )
             }
-            return try clickElement(
+            return try clickTarget(
                 request: request,
                 capture: capture,
-                elementIndex: elementIndex,
+                requestedActionTarget: target,
                 clickCount: clickCount,
                 mouseButton: mouseButton,
                 frontmostBefore: frontmostBefore,
@@ -213,7 +213,7 @@ struct ClickRouteService {
                 axAttempt: nil,
                 coordinate: nil,
                 transports: [],
-                routeSteps: [rejectedStep("No elementIndex or x/y coordinate was supplied.")],
+                routeSteps: [rejectedStep("No target or x/y coordinate was supplied.")],
                 preStateToken: capture.envelope.response.stateToken,
                 postStateToken: nil,
                 cursor: AXCursorTargeting.notAttempted(
@@ -289,10 +289,10 @@ struct ClickRouteService {
         )
     }
 
-    private func clickElement(
+    private func clickTarget(
         request: ClickRequest,
         capture: AXActionStateCapture,
-        elementIndex: Int,
+        requestedActionTarget: ActionTargetRequestDTO,
         clickCount: Int,
         mouseButton: MouseButtonDTO,
         frontmostBefore: String?,
@@ -300,18 +300,22 @@ struct ClickRouteService {
         notes: [String]
     ) throws -> ClickResponse {
         guard let candidate = targetResolver.resolveTarget(
-            elementIndex: elementIndex,
+            requestedActionTarget,
             in: capture,
             kind: .click
         ) else {
+            let failureSummary = targetResolver.targetResolutionFailureDescription(
+                for: requestedActionTarget,
+                in: capture
+            )
             return response(
                 classification: .verifierAmbiguous,
                 failureDomain: .targeting,
-                summary: "No projected click target matched elementIndex \(elementIndex).",
+                summary: failureSummary,
                 window: capture.envelope.response.window,
                 requestedTarget: ClickRequestedTargetDTO(
-                    kind: .element,
-                    elementIndex: elementIndex,
+                    kind: .semanticTarget,
+                    target: requestedActionTarget,
                     x: nil,
                     y: nil,
                     coordinateSpace: nil
@@ -324,12 +328,12 @@ struct ClickRouteService {
                 axAttempt: nil,
                 coordinate: nil,
                 transports: [],
-                routeSteps: [rejectedStep("No projected target matched the requested elementIndex.")],
+                routeSteps: [rejectedStep(failureSummary)],
                 preStateToken: capture.envelope.response.stateToken,
                 postStateToken: nil,
                 cursor: AXCursorTargeting.notAttempted(
                     requested: request.cursor,
-                    reason: "Cursor movement was not attempted because the element target was not resolved."
+                    reason: "Cursor movement was not attempted because the semantic target was not resolved."
                 ),
                 frontmostBundleBefore: frontmostBefore,
                 frontmostBundleBeforeDispatch: nil,
@@ -357,8 +361,8 @@ struct ClickRouteService {
                 summary: outcome.summary,
                 window: outcome.postCapture?.envelope.response.window ?? capture.envelope.response.window,
                 requestedTarget: ClickRequestedTargetDTO(
-                    kind: .element,
-                    elementIndex: elementIndex,
+                    kind: .semanticTarget,
+                    target: requestedActionTarget,
                     x: nil,
                     y: nil,
                     coordinateSpace: nil
@@ -457,7 +461,7 @@ struct ClickRouteService {
     ) -> ClickSemanticOutcome {
         var warnings = warnings
         var notes = notes
-        notes.append("Element click attempted the semantic AX lane before pointer fallback.")
+        notes.append("Semantic target click attempted the AX lane before pointer fallback.")
 
         let liveElement: AXActionResolvedLiveElement
         do {
@@ -493,7 +497,7 @@ struct ClickRouteService {
             let summary: String
             switch plan.attempt {
             case .coordinateRequired:
-                summary = "The element requires an element-derived pointer click; no exact semantic AX primary-click strategy applied."
+                summary = "The target requires a target-derived pointer click; no exact semantic AX primary-click strategy applied."
             case .ambiguousDescendantClick:
                 summary = "The element contained multiple possible primary-click descendants, so semantic AX retargeting was rejected."
             default:
@@ -890,7 +894,7 @@ struct ClickRouteService {
         notes: [String]
     ) -> ClickCoordinateOutcome {
         var notes = notes
-        notes.append("Explicit element multi-click bypassed semantic AX so native pointer events can dispatch back-to-back with no verification gap.")
+        notes.append("Explicit target multi-click bypassed semantic AX so native pointer events can dispatch back-to-back with no verification gap.")
         guard let plan = coordinatePlan(for: target, window: capture.envelope.response.window) else {
             let cursor = AXCursorTargeting.notAttempted(
                 requested: request.cursor,
@@ -1461,7 +1465,7 @@ struct ClickRouteService {
         )
     }
 
-    private func normalizedElementClickCount(_ request: ClickRequest) -> Int? {
+    private func normalizedTargetClickCount(_ request: ClickRequest) -> Int? {
         try? normalizedClickCount(request)
     }
 
@@ -1542,10 +1546,10 @@ struct ClickRouteService {
     }
 
     private func requestedTargetDTO(_ request: ClickRequest) -> ClickRequestedTargetDTO {
-        if let elementIndex = request.elementIndex {
+        if let target = request.target {
             return ClickRequestedTargetDTO(
-                kind: .element,
-                elementIndex: elementIndex,
+                kind: .semanticTarget,
+                target: target,
                 x: nil,
                 y: nil,
                 coordinateSpace: nil
@@ -1553,7 +1557,7 @@ struct ClickRouteService {
         }
         return ClickRequestedTargetDTO(
             kind: .coordinate,
-            elementIndex: nil,
+            target: nil,
             x: request.x.map(sanitizedJSONDouble),
             y: request.y.map(sanitizedJSONDouble),
             coordinateSpace: request.x != nil || request.y != nil ? .modelFacingScreenshot : nil
