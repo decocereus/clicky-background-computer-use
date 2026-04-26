@@ -540,6 +540,9 @@ public struct StatePipelineExperiment {
         if rawCapture.truncated {
             notes.append("Raw capture reached the maxNodes limit before traversing the full accessibility tree.")
         }
+        if rawCapture.nodes.contains(where: { $0.collectionInfo?.isWindowed == true }) {
+            notes.append("Dense native collection branches are windowed to visible rows and report collectionInfo ranges.")
+        }
         if effectiveMenuMode == .none {
             notes.append("Menu bar chrome is excluded by default in the experiment projection policy.")
         } else if effectiveMenuMode == .fullMenuTraversal {
@@ -638,6 +641,7 @@ public struct StatePipelineExperiment {
             activationPointAppKit: activationPoint,
             suggestedInteractionPointAppKit: suggestedInteractionPoint,
             childCount: projectedNode.childProjectedIndices.count,
+            collectionInfo: primaryRawNode?.collectionInfo,
             interactionTraits: primaryRawNode?.interactionTraits,
             profileHint: projectedNode.profileHint,
             transformNotes: projectedNode.transformNotes

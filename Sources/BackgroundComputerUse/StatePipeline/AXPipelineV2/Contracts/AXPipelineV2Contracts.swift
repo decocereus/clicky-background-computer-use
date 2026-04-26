@@ -168,6 +168,16 @@ public struct AXInteractionTraitsDTO: Codable {
     public let isTextEntry: Bool
 }
 
+public struct AXCollectionWindowDTO: Codable {
+    public let source: String
+    public let totalItems: Int
+    public let returnedItems: Int
+    public let visibleStartIndex: Int?
+    public let visibleEndIndex: Int?
+    public let isWindowed: Bool
+    public let reason: String
+}
+
 public struct AXAffordanceDTO: Codable, Equatable {
     public let kind: String
     public let label: String?
@@ -291,6 +301,7 @@ public struct AXRawNodeDTO: Codable {
     public let activationPointAppKit: PointDTO?
     public let childCount: Int
     public let childSource: String?
+    public let collectionInfo: AXCollectionWindowDTO?
     public let identity: AXNodeIdentityDTO?
     public let relationships: AXRelationshipSnapshotDTO?
     public let textExtraction: AXTextExtractionDTO?
@@ -467,6 +478,7 @@ public struct AXPipelineV2SurfaceNodeDTO: Codable {
     public let activationPointAppKit: PointDTO?
     public let suggestedInteractionPointAppKit: PointDTO?
     public let childCount: Int
+    public let collectionInfo: AXCollectionWindowDTO?
     public let interactionTraits: AXInteractionTraitsDTO?
     public let profileHint: String?
     public let transformNotes: [String]

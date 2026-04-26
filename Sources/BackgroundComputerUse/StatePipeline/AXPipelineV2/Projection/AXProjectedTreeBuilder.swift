@@ -1859,6 +1859,12 @@ private final class ProjectionContext {
            owns(label: label, fragment: selectedText) == false {
             metadata.append("Selected Text: " + truncatedText(selectedText, limit: 120))
         }
+        if let collectionInfo = rawNode.collectionInfo,
+           collectionInfo.isWindowed,
+           let visibleStartIndex = collectionInfo.visibleStartIndex,
+           let visibleEndIndex = collectionInfo.visibleEndIndex {
+            metadata.append("showing \(visibleStartIndex)-\(visibleEndIndex) of \(collectionInfo.totalItems) items")
+        }
         if profile == .richWeb {
             if let url = ProjectionTextSupport.cleaned(rawNode.url),
                owns(label: label, fragment: url) == false {

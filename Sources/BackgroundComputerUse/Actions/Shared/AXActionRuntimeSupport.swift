@@ -223,9 +223,37 @@ enum AXActionRuntimeSupport {
     static func childElements(_ element: AXUIElement) -> [AXUIElement] {
         let visibleChildren = elementArrayAttribute(element, attribute: "AXVisibleChildren" as CFString)
         if visibleChildren.isEmpty == false {
+            if visibleChildren.count >= AXDenseCollectionSupport.windowingThreshold,
+               let visibleRows = denseVisibleRowsIfAvailable(for: element) {
+                return visibleRows
+            }
             return visibleChildren
         }
-        return elementArrayAttribute(element, attribute: kAXChildrenAttribute as CFString)
+        let children = elementArrayAttribute(element, attribute: kAXChildrenAttribute as CFString)
+        if children.count >= AXDenseCollectionSupport.windowingThreshold,
+           let visibleRows = denseVisibleRowsIfAvailable(for: element) {
+            return visibleRows
+        }
+        return children
+    }
+
+    private static func denseVisibleRowsIfAvailable(for element: AXUIElement) -> [AXUIElement]? {
+        let role = stringAttribute(element, attribute: kAXRoleAttribute as CFString)
+        guard AXDenseCollectionSupport.isNativeCollectionRole(role) else {
+            return nil
+        }
+
+        let rows = elementArrayAttribute(element, attribute: AXDenseCollectionSupport.rowsAttribute)
+        guard rows.count >= AXDenseCollectionSupport.windowingThreshold else {
+            return nil
+        }
+
+        let visibleRows = elementArrayAttribute(element, attribute: AXDenseCollectionSupport.visibleRowsAttribute)
+        guard visibleRows.isEmpty == false, visibleRows.count < rows.count else {
+            return nil
+        }
+
+        return visibleRows
     }
 
     static func descendants(of root: AXUIElement, limit: Int = 2_000) -> [AXUIElement] {

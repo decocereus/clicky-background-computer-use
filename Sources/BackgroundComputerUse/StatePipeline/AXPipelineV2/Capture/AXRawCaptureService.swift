@@ -4,11 +4,15 @@ import Foundation
 
 private let maxValuePreviewLength = 220
 private let perElementAXReadTimeout: Float = 0.25
+private let denseCollectionFrameReadTimeout: Float = 0.05
+private let denseCollectionViewportPadding: CGFloat = 24
 private typealias AXElementIdentity = ObjectIdentifier
 
 private enum AXAttributeNames {
     static var children: CFString { kAXChildrenAttribute as CFString }
     static var visibleChildren: CFString { "AXVisibleChildren" as CFString }
+    static var rows: CFString { AXDenseCollectionSupport.rowsAttribute }
+    static var visibleRows: CFString { AXDenseCollectionSupport.visibleRowsAttribute }
     static var role: CFString { kAXRoleAttribute as CFString }
     static var subrole: CFString { kAXSubroleAttribute as CFString }
     static var roleDescription: CFString { "AXRoleDescription" as CFString }
@@ -115,30 +119,47 @@ struct AXRawCaptureService {
                     session.individualValues(item.element, attributes: childAttributesForCapture())
                 )
             }
+            let rowValues = shouldCaptureChildren && shouldReadNativeRows(role: role, isWebNode: isWebNode)
+                ? session.multiple(
+                    item.element,
+                    attributes: nativeRowAttributesForCapture()
+                )
+                : [:]
             let relationshipValues = isPassiveMenuBarItem || isWebNode
                 ? [:]
                 : session.multiple(
                     item.element,
                     attributes: relationshipAttributesForCapture()
                 )
-            let values = mergedValues(baseValues, childValues, relationshipValues)
+            let values = mergedValues(baseValues, childValues, rowValues, relationshipValues)
             let parameterizedAttributes = shouldReadParameterizedAttributes(role: role, isWebNode: isWebNode)
                 ? AXHelpers.parameterizedAttributeNames(item.element).sorted()
                 : []
             let rawChildren = shouldCaptureChildren ? session.elementArray(from: values, attribute: AXAttributeNames.children) : []
             let visibleChildren = shouldCaptureChildren ? session.elementArray(from: values, attribute: AXAttributeNames.visibleChildren) : []
+            let rawRows = shouldCaptureChildren ? session.elementArray(from: values, attribute: AXAttributeNames.rows) : []
+            let visibleRows = shouldCaptureChildren ? session.elementArray(from: values, attribute: AXAttributeNames.visibleRows) : []
+            let frame = frame(from: values)
             let projectedChildren = shouldCaptureChildren == false
-                ? (elements: [], source: childSummarySource(role: role, isPassiveMenuBarItem: isPassiveMenuBarItem))
+                ? ProjectedChildren(
+                    elements: [],
+                    source: childSummarySource(role: role, isPassiveMenuBarItem: isPassiveMenuBarItem),
+                    collectionInfo: nil
+                )
                 : filteredProjectedChildren(
                     rawChildren,
                     visibleChildren: visibleChildren,
+                    rawRows: rawRows,
+                    visibleRows: visibleRows,
                     parentRole: role,
+                    parentFrame: frame,
                     session: session,
-                    webTraversal: webTraversal
+                    webTraversal: webTraversal,
+                    isWebNode: isWebNode
                 )
 
             let index = workingNodes.count
-            let frameAppKit = rectDTO(frame(from: values))
+            let frameAppKit = rectDTO(frame)
             let valueSummary = self.valueSummary(from: session.cfValue(from: values, attribute: AXAttributeNames.value))
             let textExtraction = shouldExtractText(role: role, isWebNode: isWebNode)
                 ? textExtractionService.extract(
@@ -189,6 +210,7 @@ struct AXRawCaptureService {
                 activationPointAppKit: activationPointAppKit,
                 childCount: projectedChildren.elements.count,
                 childSource: projectedChildren.source,
+                collectionInfo: projectedChildren.collectionInfo,
                 titleElement: isPassiveMenuBarItem ? nil : session.element(from: values, attribute: AXAttributeNames.titleUIElement),
                 labelElements: isPassiveMenuBarItem ? [] : session.elementArray(from: values, attribute: AXAttributeNames.labelUIElements),
                 linkedElements: isPassiveMenuBarItem ? [] : session.elementArray(from: values, attribute: AXAttributeNames.linkedUIElements),
@@ -218,12 +240,12 @@ struct AXRawCaptureService {
             }
 
             let childIsInsideWebArea = item.isInsideWebArea || role == "AXWebArea"
-            for (childOrdinal, child) in projectedChildren.elements.enumerated().reversed() {
+            for child in projectedChildren.elements.reversed() {
                 stack.append((
-                    element: child,
+                    element: child.element,
                     parentIndex: index,
                     depth: item.depth + 1,
-                    path: item.path + [childOrdinal],
+                    path: item.path + [child.ordinal],
                     isInsideWebArea: childIsInsideWebArea
                 ))
             }
@@ -282,6 +304,13 @@ struct AXRawCaptureService {
         [
             AXAttributeNames.children,
             AXAttributeNames.visibleChildren,
+        ]
+    }
+
+    private func nativeRowAttributesForCapture() -> [CFString] {
+        [
+            AXAttributeNames.rows,
+            AXAttributeNames.visibleRows,
         ]
     }
 
@@ -363,6 +392,13 @@ struct AXRawCaptureService {
         return AXActionabilitySupport.isTextEntryRole(role: role, subrole: nil)
     }
 
+    private func shouldReadNativeRows(role: String?, isWebNode: Bool) -> Bool {
+        guard isWebNode == false else {
+            return false
+        }
+        return AXDenseCollectionSupport.isNativeCollectionRole(role)
+    }
+
     private func shouldExtractText(role: String?, isWebNode: Bool) -> Bool {
         guard isWebNode else {
             return true
@@ -403,12 +439,16 @@ struct AXRawCaptureService {
     private func filteredProjectedChildren(
         _ children: [AXUIElement],
         visibleChildren: [AXUIElement],
+        rawRows: [AXUIElement],
+        visibleRows: [AXUIElement],
         parentRole: String?,
+        parentFrame: CGRect?,
         session: AXReadSession,
-        webTraversal: AXWebTraversalMode
-    ) -> (elements: [AXUIElement], source: String) {
+        webTraversal: AXWebTraversalMode,
+        isWebNode: Bool
+    ) -> ProjectedChildren {
         if parentRole == String(kAXMenuBarRole) {
-            let filtered = children.filter { child in
+            let filtered = children.enumerated().compactMap { ordinal, child -> ProjectedChild? in
                 AXUIElementSetMessagingTimeout(child, perElementAXReadTimeout)
                 let values = session.multiple(
                     child,
@@ -416,16 +456,208 @@ struct AXRawCaptureService {
                 )
                 let childRole = session.string(from: values, attribute: AXAttributeNames.role)
                 let childTitle = session.string(from: values, attribute: AXAttributeNames.title)
-                return childRole == String(kAXMenuBarItemRole) && childTitle != "Apple"
+                guard childRole == String(kAXMenuBarItemRole), childTitle != "Apple" else {
+                    return nil
+                }
+                return ProjectedChild(element: child, ordinal: ordinal)
             }
-            return (filtered, "children")
+            return ProjectedChildren(elements: filtered, source: "children", collectionInfo: nil)
         }
 
-        if prefersVisibleChildren(parentRole, webTraversal: webTraversal), visibleChildren.isEmpty == false {
-            return (visibleChildren, "visibleChildren")
+        let rawChildren = children.enumerated().map { ordinal, child in
+            ProjectedChild(element: child, ordinal: ordinal)
+        }
+        let rawRowChildren = rawRows.enumerated().map { ordinal, child in
+            ProjectedChild(element: child, ordinal: ordinal)
+        }
+        let visibleProjectedRows = projectedVisibleChildren(
+            visibleRows,
+            rawChildren: rawRows
+        )
+        if shouldWindowDenseCollection(
+            parentRole: parentRole,
+            isWebNode: isWebNode,
+            rawChildCount: rawRows.count
+        ) {
+            if visibleProjectedRows.isEmpty == false, visibleProjectedRows.count < rawRows.count {
+                return ProjectedChildren(
+                    elements: visibleProjectedRows,
+                    source: "visibleRows",
+                    collectionInfo: collectionInfo(
+                        source: "visibleRows",
+                        totalItems: rawRows.count,
+                        returnedChildren: visibleProjectedRows,
+                        reason: "dense_native_collection_visible_rows"
+                    )
+                )
+            }
+
+            if let windowedRows = viewportWindowedChildren(
+                rawRowChildren,
+                parentFrame: parentFrame,
+                source: "rows",
+                session: session
+            ) {
+                return windowedRows
+            }
         }
 
-        return (children, "children")
+        let visibleProjectedChildren = projectedVisibleChildren(
+            visibleChildren,
+            rawChildren: children
+        )
+        let sourceElements: [ProjectedChild]
+        let source: String
+        if prefersVisibleChildren(parentRole, webTraversal: webTraversal), visibleProjectedChildren.isEmpty == false {
+            sourceElements = visibleProjectedChildren
+            source = "visibleChildren"
+        } else {
+            sourceElements = rawChildren
+            source = "children"
+        }
+
+        if shouldWindowDenseCollection(
+            parentRole: parentRole,
+            isWebNode: isWebNode,
+            rawChildCount: children.count
+        ) {
+            if visibleProjectedChildren.isEmpty == false, visibleProjectedChildren.count < children.count {
+                return ProjectedChildren(
+                    elements: visibleProjectedChildren,
+                    source: "visibleChildren",
+                    collectionInfo: collectionInfo(
+                        source: "visibleChildren",
+                        totalItems: children.count,
+                        returnedChildren: visibleProjectedChildren,
+                        reason: "dense_native_collection_visible_children"
+                    )
+                )
+            }
+
+            if let windowedChildren = viewportWindowedChildren(
+                rawChildren,
+                parentFrame: parentFrame,
+                source: source,
+                session: session
+            ) {
+                return windowedChildren
+            }
+        }
+
+        return ProjectedChildren(elements: sourceElements, source: source, collectionInfo: nil)
+    }
+
+    private func projectedVisibleChildren(
+        _ visibleChildren: [AXUIElement],
+        rawChildren: [AXUIElement]
+    ) -> [ProjectedChild] {
+        guard visibleChildren.isEmpty == false else {
+            return []
+        }
+        guard visibleChildren.count != rawChildren.count else {
+            return visibleChildren.enumerated().map { ordinal, child in
+                ProjectedChild(element: child, ordinal: ordinal)
+            }
+        }
+
+        var rawOrdinalByIdentity: [AXElementIdentity: Int] = [:]
+        for (ordinal, child) in rawChildren.enumerated() {
+            let identity = AXElementIdentity(child as AnyObject)
+            if rawOrdinalByIdentity[identity] == nil {
+                rawOrdinalByIdentity[identity] = ordinal
+            }
+        }
+        var usedOrdinals = Set<Int>()
+
+        return visibleChildren.enumerated().map { fallbackOrdinal, child in
+            let identity = AXElementIdentity(child as AnyObject)
+            if let ordinal = rawOrdinalByIdentity[identity], usedOrdinals.insert(ordinal).inserted {
+                return ProjectedChild(element: child, ordinal: ordinal)
+            }
+            if let ordinal = rawChildren.firstIndex(where: { candidate in
+                AXHelpers.elementsEqual(candidate, child)
+            }), usedOrdinals.insert(ordinal).inserted {
+                return ProjectedChild(element: child, ordinal: ordinal)
+            }
+            return ProjectedChild(element: child, ordinal: fallbackOrdinal)
+        }
+    }
+
+    private func shouldWindowDenseCollection(
+        parentRole: String?,
+        isWebNode: Bool,
+        rawChildCount: Int
+    ) -> Bool {
+        guard isWebNode == false, rawChildCount >= AXDenseCollectionSupport.windowingThreshold else {
+            return false
+        }
+        return AXDenseCollectionSupport.isNativeCollectionRole(parentRole)
+    }
+
+    private func viewportWindowedChildren(
+        _ children: [ProjectedChild],
+        parentFrame: CGRect?,
+        source: String,
+        session: AXReadSession
+    ) -> ProjectedChildren? {
+        guard let parentFrame, parentFrame.isEmpty == false else {
+            return nil
+        }
+
+        let viewport = parentFrame.insetBy(dx: 0, dy: -denseCollectionViewportPadding)
+        let visibleChildren = children.filter { child in
+            guard let childFrame = childFrame(child.element, session: session),
+                  childFrame.isEmpty == false else {
+                return false
+            }
+            return childFrame.intersects(viewport)
+        }
+
+        guard visibleChildren.isEmpty == false, visibleChildren.count < children.count else {
+            return nil
+        }
+
+        let windowedSource = source + ".viewport"
+        return ProjectedChildren(
+            elements: visibleChildren,
+            source: windowedSource,
+            collectionInfo: collectionInfo(
+                source: windowedSource,
+                totalItems: children.count,
+                returnedChildren: visibleChildren,
+                reason: "dense_native_collection_viewport"
+            )
+        )
+    }
+
+    private func childFrame(
+        _ child: AXUIElement,
+        session: AXReadSession
+    ) -> CGRect? {
+        AXUIElementSetMessagingTimeout(child, denseCollectionFrameReadTimeout)
+        let values = session.multiple(
+            child,
+            attributes: [AXAttributeNames.position, AXAttributeNames.size]
+        )
+        return frame(from: values)
+    }
+
+    private func collectionInfo(
+        source: String,
+        totalItems: Int,
+        returnedChildren: [ProjectedChild],
+        reason: String
+    ) -> AXCollectionWindowDTO {
+        let ordinals = returnedChildren.map(\.ordinal)
+        return AXCollectionWindowDTO(
+            source: source,
+            totalItems: totalItems,
+            returnedItems: returnedChildren.count,
+            visibleStartIndex: ordinals.min(),
+            visibleEndIndex: ordinals.max(),
+            isWindowed: true,
+            reason: reason
+        )
     }
 
     private func prefersVisibleChildren(_ parentRole: String?, webTraversal: AXWebTraversalMode) -> Bool {
@@ -598,6 +830,17 @@ struct AXRawCaptureService {
     }
 }
 
+private struct ProjectedChild {
+    let element: AXUIElement
+    let ordinal: Int
+}
+
+private struct ProjectedChildren {
+    let elements: [ProjectedChild]
+    let source: String
+    let collectionInfo: AXCollectionWindowDTO?
+}
+
 private struct WorkingRawNode {
     let index: Int
     let parentIndex: Int?
@@ -628,6 +871,7 @@ private struct WorkingRawNode {
     let activationPointAppKit: PointDTO?
     let childCount: Int
     let childSource: String?
+    let collectionInfo: AXCollectionWindowDTO?
     let titleElement: AXUIElement?
     let labelElements: [AXUIElement]
     let linkedElements: [AXUIElement]
@@ -735,6 +979,7 @@ private struct WorkingRawNode {
             activationPointAppKit: activationPointAppKit,
             childCount: childCount,
             childSource: childSource,
+            collectionInfo: collectionInfo,
             identity: identity,
             relationships: relationships,
             textExtraction: textExtraction,
