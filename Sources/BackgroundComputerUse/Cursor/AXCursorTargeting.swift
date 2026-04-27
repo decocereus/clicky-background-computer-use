@@ -93,7 +93,7 @@ enum AXCursorTargeting {
 
     static func finishClick(cursor: ActionCursorTargetResponseDTO) {
         guard cursor.moved else { return }
-        CursorRuntime.release(cursorID: cursor.session.id, afterHold: CursorRuntime.releaseHoldDuration())
+        CursorRuntime.finishClick(cursorID: cursor.session.id, afterHold: CursorRuntime.releaseHoldDuration())
     }
 
     static func prepareSecondaryAction(

@@ -78,13 +78,13 @@ struct CursorActionTimings: Equatable {
         scrollDwellMilliseconds: 850,
         pressKeyPreBounceMilliseconds: 180,
         pressKeyHoldMilliseconds: 180,
-        pressKeyReleaseMilliseconds: 350,
+        pressKeyReleaseMilliseconds: 500,
         setValuePreRippleMilliseconds: 180,
         setValueDwellMilliseconds: 550,
         typeArrowToIBeamMilliseconds: 220,
         typeIBeamToCaretMilliseconds: 220,
         typeCharacterIntervalMilliseconds: 90,
-        typeTailDwellMilliseconds: 350,
+        typeTailDwellMilliseconds: 500,
         morphDurationMilliseconds: 220
     )
 }
@@ -244,7 +244,7 @@ enum CursorMotionPlanner {
 
 enum MotionPacing {
     static let pressLead: TimeInterval = 0.08
-    static let releaseHold: TimeInterval = 0.18
+    static let releaseHold: TimeInterval = 0.50
 
     static func transitDuration(
         for distance: CGFloat,

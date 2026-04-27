@@ -51,6 +51,7 @@ private final class CursorSessionState {
     var acquireGlowEmitted = false
     var anticipationTilt: CGFloat = 0
     var nextMotionEntersFromEdge = false
+    var actionGeneration: UInt64 = 0
 
     init(descriptor: CursorSessionDescriptor, now: TimeInterval) {
         id = descriptor.id
@@ -93,6 +94,7 @@ private struct CursorOverlayKey: Hashable {
 @MainActor
 final class CursorCoordinator {
     static let shared = CursorCoordinator()
+    private static let maxTypeTextPuffs = 6
 
     private let defaultProfile = CursorProfile.codex
     private let tuning = CursorMotionTuning.swoopy
@@ -252,8 +254,11 @@ final class CursorCoordinator {
 
     func finishSecondaryAction(cursorID: String) {
         let session = session(for: cursorID)
-        sleepFor(timings.secondaryDwellMilliseconds / 1000)
-        endAction(session)
+        scheduleActionEnd(
+            cursorID: cursorID,
+            generation: session.actionGeneration,
+            after: timings.secondaryDwellMilliseconds / 1000
+        )
     }
 
     @discardableResult
@@ -279,8 +284,11 @@ final class CursorCoordinator {
 
     func finishScroll(cursorID: String) {
         let session = session(for: cursorID)
-        sleepFor(timings.scrollDwellMilliseconds / 1000)
-        endAction(session)
+        scheduleActionEnd(
+            cursorID: cursorID,
+            generation: session.actionGeneration,
+            after: timings.scrollDwellMilliseconds / 1000
+        )
     }
 
     @discardableResult
@@ -312,12 +320,18 @@ final class CursorCoordinator {
 
     func finishPressKey(cursorID: String) {
         let session = session(for: cursorID)
-        sleepFor(timings.pressKeyHoldMilliseconds / 1000)
-        session.isPressed = false
-        touchVisibility(session, now: CACurrentMediaTime())
-        refreshPresentation()
-        sleepFor(timings.pressKeyReleaseMilliseconds / 1000)
-        endAction(session)
+        let generation = session.actionGeneration
+        schedulePressed(
+            false,
+            cursorID: cursorID,
+            generation: generation,
+            after: timings.pressKeyHoldMilliseconds / 1000
+        )
+        scheduleActionEnd(
+            cursorID: cursorID,
+            generation: generation,
+            after: (timings.pressKeyHoldMilliseconds + timings.pressKeyReleaseMilliseconds) / 1000
+        )
     }
 
     @discardableResult
@@ -337,8 +351,11 @@ final class CursorCoordinator {
 
     func finishSetValue(cursorID: String) {
         let session = session(for: cursorID)
-        sleepFor(timings.setValueDwellMilliseconds / 1000)
-        endAction(session)
+        scheduleActionEnd(
+            cursorID: cursorID,
+            generation: session.actionGeneration,
+            after: timings.setValueDwellMilliseconds / 1000
+        )
     }
 
     @discardableResult
@@ -360,24 +377,32 @@ final class CursorCoordinator {
 
     func finishTypeText(cursorID: String, text: String) {
         let session = session(for: cursorID)
-        let accent = session.accent
-        for _ in text {
-            emit(
-                .puff(
-                    origin: CGPoint(x: session.position.x + CGFloat.random(in: -2...2), y: session.position.y + 10),
-                    drift: CGVector(dx: CGFloat.random(in: -0.3...0.3), dy: 1),
-                    color: accent.trail,
-                    radius: 2.4,
-                    lifetime: 0.5,
-                    age: 0
-                ),
-                in: session
+        let generation = session.actionGeneration
+        let puffCount = min(text.count, Self.maxTypeTextPuffs)
+        let puffInterval = timings.typeCharacterIntervalMilliseconds / 1000
+
+        for index in 0..<puffCount {
+            scheduleTypePuff(
+                cursorID: cursorID,
+                generation: generation,
+                after: Double(index) * puffInterval
             )
-            sleepFor(timings.typeCharacterIntervalMilliseconds / 1000)
         }
-        sleepFor(timings.typeTailDwellMilliseconds / 1000)
-        session.isTyping = false
-        endAction(session)
+
+        scheduleActionEnd(
+            cursorID: cursorID,
+            generation: generation,
+            after: (Double(puffCount) * puffInterval) + (timings.typeTailDwellMilliseconds / 1000)
+        )
+    }
+
+    func finishClick(cursorID: String, afterHold hold: TimeInterval = MotionPacing.releaseHold) {
+        let session = session(for: cursorID)
+        let generation = session.actionGeneration
+        session.releaseUntil = CACurrentMediaTime() + hold
+        touchVisibility(session, now: CACurrentMediaTime())
+        refreshPresentation()
+        scheduleActionEnd(cursorID: cursorID, generation: generation, after: hold)
     }
 
     func setPressed(_ pressed: Bool, cursorID: String, attachedWindowNumber: Int? = nil) {
@@ -525,22 +550,106 @@ final class CursorCoordinator {
         let session = session(for: cursorID)
         updateAttachment(for: session, windowNumber: attachedWindowNumber)
         ensurePosition(for: session, near: target)
+        session.actionGeneration &+= 1
         session.actionInProgress = true
         session.releaseUntil = nil
         session.isPressed = false
         session.isTyping = false
+        session.scrollStreakEnabledUntil = 0
         setGlyph(.arrow, for: session)
         touchVisibility(session, now: CACurrentMediaTime())
         refreshPresentation()
         return session
     }
 
-    private func endAction(_ session: CursorSessionState) {
+    private func endAction(_ session: CursorSessionState, preserveScrollStreak: Bool = false) {
         session.isPressed = false
         session.isTyping = false
-        session.scrollStreakEnabledUntil = 0
+        if preserveScrollStreak == false {
+            session.scrollStreakEnabledUntil = 0
+        }
         setGlyph(.arrow, for: session)
         session.actionInProgress = false
+        touchVisibility(session, now: CACurrentMediaTime())
+        refreshPresentation()
+    }
+
+    private func schedulePressed(
+        _ pressed: Bool,
+        cursorID: String,
+        generation: UInt64,
+        after delay: TimeInterval
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.setPressedIfCurrent(
+                    pressed,
+                    cursorID: cursorID,
+                    generation: generation
+                )
+            }
+        }
+    }
+
+    private func scheduleActionEnd(
+        cursorID: String,
+        generation: UInt64,
+        after delay: TimeInterval
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.endActionIfCurrent(cursorID: cursorID, generation: generation)
+            }
+        }
+    }
+
+    private func scheduleTypePuff(
+        cursorID: String,
+        generation: UInt64,
+        after delay: TimeInterval
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.emitTypePuffIfCurrent(cursorID: cursorID, generation: generation)
+            }
+        }
+    }
+
+    private func setPressedIfCurrent(_ pressed: Bool, cursorID: String, generation: UInt64) {
+        guard let session = sessionsByID[cursorID],
+              session.actionGeneration == generation else {
+            return
+        }
+        session.isPressed = pressed
+        session.releaseUntil = nil
+        touchVisibility(session, now: CACurrentMediaTime())
+        refreshPresentation()
+    }
+
+    private func endActionIfCurrent(cursorID: String, generation: UInt64) {
+        guard let session = sessionsByID[cursorID],
+              session.actionGeneration == generation else {
+            return
+        }
+        endAction(session)
+    }
+
+    private func emitTypePuffIfCurrent(cursorID: String, generation: UInt64) {
+        guard let session = sessionsByID[cursorID],
+              session.actionGeneration == generation else {
+            return
+        }
+        emit(
+            .puff(
+                origin: CGPoint(x: session.position.x + CGFloat.random(in: -2...2), y: session.position.y + 10),
+                drift: CGVector(dx: CGFloat.random(in: -0.3...0.3), dy: 1),
+                color: session.accent.trail,
+                radius: 2.4,
+                lifetime: 0.5,
+                age: 0
+            ),
+            in: session
+        )
         touchVisibility(session, now: CACurrentMediaTime())
         refreshPresentation()
     }
@@ -1188,6 +1297,12 @@ enum CursorRuntime {
     static func finishSecondaryAction(cursorID: String) {
         runOnMain {
             CursorCoordinator.shared.finishSecondaryAction(cursorID: cursorID)
+        }
+    }
+
+    static func finishClick(cursorID: String, afterHold hold: TimeInterval = MotionPacing.releaseHold) {
+        runOnMain {
+            CursorCoordinator.shared.finishClick(cursorID: cursorID, afterHold: hold)
         }
     }
 
