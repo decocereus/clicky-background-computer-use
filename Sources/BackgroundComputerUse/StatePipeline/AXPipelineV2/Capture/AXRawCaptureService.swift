@@ -38,6 +38,11 @@ private enum AXAttributeNames {
     static var size: CFString { kAXSizeAttribute as CFString }
 }
 
+struct AXRawLiveCaptureResult {
+    let rawCapture: AXRawCaptureResult
+    let liveElementsByCanonicalIndex: [Int: AXUIElement]
+}
+
 struct AXRawCaptureService {
     private let textExtractionService = AXTextExtractionService()
 
@@ -46,7 +51,7 @@ struct AXRawCaptureService {
         focusedElement: AXUIElement?,
         maxNodes: Int,
         webTraversal: AXWebTraversalMode = .visible
-    ) -> AXRawCaptureResult {
+    ) -> AXRawLiveCaptureResult {
         let session = AXReadSession()
         let focusedAncestorElements = focusedElement.map(focusedAncestorChain) ?? []
 
@@ -270,12 +275,19 @@ struct AXRawCaptureService {
             focusedElement: focusedElement
         )
 
-        return AXRawCaptureResult(
-            rootIndices: rootIndices,
-            nodes: finalizedNodes,
-            focusedCanonicalIndex: focusedCanonicalIndex,
-            focusSelection: focusSelection,
-            truncated: truncated
+        return AXRawLiveCaptureResult(
+            rawCapture: AXRawCaptureResult(
+                rootIndices: rootIndices,
+                nodes: finalizedNodes,
+                focusedCanonicalIndex: focusedCanonicalIndex,
+                focusSelection: focusSelection,
+                truncated: truncated
+            ),
+            liveElementsByCanonicalIndex: Dictionary(
+                uniqueKeysWithValues: indexedElements.enumerated().map { index, element in
+                    (index, element)
+                }
+            )
         )
     }
 

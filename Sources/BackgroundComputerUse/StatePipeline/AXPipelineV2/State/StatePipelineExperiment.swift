@@ -44,10 +44,22 @@ public struct StatePipelineLiveCaptureOptions {
 public struct StatePipelineCaptureResult {
     public let envelope: StatePipelineEnvelope
     public let fixture: StatePipelineFixture
+    let liveElementsByCanonicalIndex: [Int: AXUIElement]
 
     public init(envelope: StatePipelineEnvelope, fixture: StatePipelineFixture) {
         self.envelope = envelope
         self.fixture = fixture
+        liveElementsByCanonicalIndex = [:]
+    }
+
+    init(
+        envelope: StatePipelineEnvelope,
+        fixture: StatePipelineFixture,
+        liveElementsByCanonicalIndex: [Int: AXUIElement]
+    ) {
+        self.envelope = envelope
+        self.fixture = fixture
+        self.liveElementsByCanonicalIndex = liveElementsByCanonicalIndex
     }
 }
 
@@ -98,12 +110,13 @@ public struct StatePipelineExperiment {
         )
 
         let focusedElement = AXHelpers.elementAttribute(resolved.appElement, attribute: kAXFocusedUIElementAttribute as CFString)
-        let rawCapture = rawCaptureService.capture(
+        let liveCapture = rawCaptureService.capture(
             roots: menuContext.roots,
             focusedElement: focusedElement,
             maxNodes: options.maxNodes,
             webTraversal: options.webTraversal
         )
+        let rawCapture = liveCapture.rawCapture
         let semanticTree = semanticEnricher.enrich(rawCapture)
         let projectionPolicy = makeProjectionPolicy(
             platformProfile: platformProfile,
@@ -235,7 +248,11 @@ public struct StatePipelineExperiment {
             notes: responseNotes
         )
 
-        return StatePipelineCaptureResult(envelope: envelope, fixture: fixture)
+        return StatePipelineCaptureResult(
+            envelope: envelope,
+            fixture: fixture,
+            liveElementsByCanonicalIndex: liveCapture.liveElementsByCanonicalIndex
+        )
     }
 
     func captureResolvedWindow(
@@ -266,12 +283,13 @@ public struct StatePipelineExperiment {
         )
 
         let focusedElement = AXHelpers.elementAttribute(resolved.appElement, attribute: kAXFocusedUIElementAttribute as CFString)
-        let rawCapture = rawCaptureService.capture(
+        let liveCapture = rawCaptureService.capture(
             roots: menuContext.roots,
             focusedElement: focusedElement,
             maxNodes: maxNodes,
             webTraversal: webTraversal
         )
+        let rawCapture = liveCapture.rawCapture
         let semanticTree = semanticEnricher.enrich(rawCapture)
         let projectionPolicy = makeProjectionPolicy(
             platformProfile: platformProfile,
@@ -409,7 +427,11 @@ public struct StatePipelineExperiment {
             notes: responseNotes
         )
 
-        return StatePipelineCaptureResult(envelope: envelope, fixture: fixture)
+        return StatePipelineCaptureResult(
+            envelope: envelope,
+            fixture: fixture,
+            liveElementsByCanonicalIndex: liveCapture.liveElementsByCanonicalIndex
+        )
     }
 
     public func replayFixture(_ fixture: StatePipelineFixture, imageMode _: ImageMode = .path) -> StatePipelineEnvelope {

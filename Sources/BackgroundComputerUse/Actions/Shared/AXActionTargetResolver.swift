@@ -10,6 +10,7 @@ struct AXActionStateCapture {
     let maxNodes: Int
     let resolved: ResolvedWindowTarget
     let envelope: AXPipelineV2Envelope
+    let liveElementsByCanonicalIndex: [Int: AXUIElement]
     let displayIndexByProjectedIndex: [Int: Int]
 }
 
@@ -137,6 +138,7 @@ struct AXActionTargetResolver {
             maxNodes: maxNodes,
             resolved: resolved,
             envelope: capture.envelope,
+            liveElementsByCanonicalIndex: capture.liveElementsByCanonicalIndex,
             displayIndexByProjectedIndex: Dictionary(
                 uniqueKeysWithValues: capture.envelope.response.tree.lineMappings.map {
                     ($0.projectedIndex, $0.displayIndex)
@@ -424,6 +426,11 @@ struct AXActionTargetResolver {
             return matched
         }
 
+        if target.rawRole != String(kAXWindowRole),
+           let captured = resolveCapturedLiveElement(for: target, in: capture) {
+            return captured
+        }
+
         let windowElement = try resolveWindowElement(
             appElement: appElement,
             window: capture.envelope.response.window
@@ -448,6 +455,25 @@ struct AXActionTargetResolver {
         throw AXActionTargetResolverError.unresolvedTarget(
             "No live AX element matched projected node \(target.projectedIndex) in window \(capture.envelope.response.window.windowID)."
         )
+    }
+
+    private func resolveCapturedLiveElement(
+        for target: AXActionTargetSnapshot,
+        in capture: AXActionStateCapture
+    ) -> AXActionResolvedLiveElement? {
+        var visited = Set<Int>()
+        for canonicalIndex in [target.primaryCanonicalIndex] + target.canonicalIndices where visited.insert(canonicalIndex).inserted {
+            guard let element = capture.liveElementsByCanonicalIndex[canonicalIndex] else {
+                continue
+            }
+            return AXActionResolvedLiveElement(
+                element: element,
+                resolution: canonicalIndex == target.primaryCanonicalIndex
+                    ? "captured_primary_canonical_index"
+                    : "captured_canonical_index"
+            )
+        }
+        return nil
     }
 
     private func isMenuTarget(_ target: AXActionTargetSnapshot) -> Bool {

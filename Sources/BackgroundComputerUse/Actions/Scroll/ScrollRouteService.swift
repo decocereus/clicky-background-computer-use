@@ -199,7 +199,6 @@ struct ScrollRouteService {
                     strategies: axStrategies,
                     capture: capture,
                     requestedNode: requestedNode,
-                    requestedTarget: requestedTarget,
                     direction: request.direction,
                     pages: pages,
                     cursorRequest: request.cursor
@@ -256,7 +255,6 @@ struct ScrollRouteService {
                 strategies: [.targetedScrollWheelPostToPID],
                 capture: capture,
                 requestedNode: requestedNode,
-                requestedTarget: requestedTarget,
                 direction: request.direction,
                 pages: pages,
                 cursorRequest: request.cursor
@@ -302,7 +300,6 @@ struct ScrollRouteService {
                 strategies: [.postToPIDPaging],
                 capture: capture,
                 requestedNode: requestedNode,
-                requestedTarget: requestedTarget,
                 direction: request.direction,
                 pages: pages,
                 cursorRequest: request.cursor
@@ -383,7 +380,6 @@ struct ScrollRouteService {
         strategies: [ScrollStrategyDTO],
         capture: AXActionStateCapture,
         requestedNode: AXPipelineV2SurfaceNodeDTO,
-        requestedTarget: AXActionTargetSnapshot,
         direction: ScrollDirectionDTO,
         pages: Int,
         cursorRequest: CursorRequestDTO?
@@ -437,7 +433,6 @@ struct ScrollRouteService {
             )
         }
 
-        let resolvedTarget = try? targetResolver.resolveLiveElement(for: requestedTarget, in: capture)
         let beforeLiveSnapshot = captureLiveContainerSnapshot(for: resolvedContainer.element)
         let beforeWindowImage = CGWindowCaptureService.captureImage(window: capture.envelope.response.window)
         var transports: [ScrollTransportAttemptDTO] = []
@@ -453,8 +448,6 @@ struct ScrollRouteService {
                 direction: direction,
                 pages: pages,
                 window: capture.envelope.response.window,
-                requestedTarget: requestedTarget,
-                resolvedTarget: resolvedTarget,
                 resolvedContainer: resolvedContainer
             )
             transports.append(attempt.transport)
@@ -526,8 +519,6 @@ struct ScrollRouteService {
         direction: ScrollDirectionDTO,
         pages: Int,
         window: ResolvedWindowDTO,
-        requestedTarget: AXActionTargetSnapshot,
-        resolvedTarget: AXActionResolvedLiveElement?,
         resolvedContainer: AXActionResolvedLiveElement
     ) -> StrategyAttemptOutcome {
         switch strategy {
@@ -537,8 +528,6 @@ struct ScrollRouteService {
                 candidate: candidate,
                 direction: direction,
                 pages: pages,
-                requestedTarget: requestedTarget,
-                resolvedTarget: resolvedTarget,
                 resolvedContainer: resolvedContainer
             )
         case .scrollbarValue:
@@ -583,8 +572,6 @@ struct ScrollRouteService {
         candidate: ScrollCandidate,
         direction: ScrollDirectionDTO,
         pages: Int,
-        requestedTarget: AXActionTargetSnapshot,
-        resolvedTarget: AXActionResolvedLiveElement?,
         resolvedContainer: AXActionResolvedLiveElement
     ) -> StrategyAttemptOutcome {
         guard let containerFrame = AXHelpers.frame(resolvedContainer.element) else {
@@ -611,18 +598,6 @@ struct ScrollRouteService {
             )
         }
 
-        guard let resolvedTarget else {
-            return nonDispatchTransport(
-                mode: mode,
-                strategy: .axScrollToShowDescendant,
-                candidate: candidate,
-                liveResolution: resolvedContainer.resolution,
-                rawStatus: "live_target_unresolved",
-                boundaryReason: nil,
-                notes: ["Requested target \(requestedTarget.projectedIndex) could not be resolved for descendant reveal."]
-            )
-        }
-
         let offscreen = selectOffscreenDescendant(
             container: resolvedContainer.element,
             containerFrame: containerFrame,
@@ -639,8 +614,7 @@ struct ScrollRouteService {
                 rawStatus: "no_offscreen_descendant",
                 boundaryReason: boundaryReason,
                 notes: [
-                    "AXScrollToShowDescendant requires an offscreen descendant in the requested direction.",
-                    "Live target resolution was \(resolvedTarget.resolution)."
+                    "AXScrollToShowDescendant requires an offscreen descendant in the requested direction."
                 ]
             )
         }
@@ -664,7 +638,7 @@ struct ScrollRouteService {
                 boundaryReason: nil,
                 notes: [
                     "Selected offscreen descendant: \(offscreen.note).",
-                    "Live target resolution was \(resolvedTarget.resolution)."
+                    "Live container resolution was \(resolvedContainer.resolution)."
                 ]
             ),
             didDispatch: error == .success
