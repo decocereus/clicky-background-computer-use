@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "BackgroundComputerUseKit", targets: ["BackgroundComputerUse"]),
         .executable(name: "BackgroundComputerUse", targets: ["BackgroundComputerUseServer"]),
+        .executable(name: "BackgroundComputerUseMCP", targets: ["BackgroundComputerUseMCP"]),
     ],
     targets: [
         .target(
@@ -17,6 +18,11 @@ let package = Package(
             name: "BackgroundComputerUseServer",
             dependencies: ["BackgroundComputerUse"],
             path: "Sources/BackgroundComputerUseServer"
+        ),
+        .executableTarget(
+            name: "BackgroundComputerUseMCP",
+            dependencies: ["BackgroundComputerUse"],
+            path: "Sources/BackgroundComputerUseMCP"
         ),
         .testTarget(
             name: "BackgroundComputerUseTests",

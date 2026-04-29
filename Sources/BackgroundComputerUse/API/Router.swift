@@ -62,6 +62,16 @@ struct Router {
                 }
             )
 
+        case (.post, "/v1/get_app_state"):
+            return decodeAndExecute(
+                GetAppStateRequest.self,
+                routeID: .getAppState,
+                from: request,
+                work: { payload in
+                    try services.getAppState(payload)
+                }
+            )
+
         case (.post, "/v1/get_window_state"):
             return decodeAndExecute(
                 GetWindowStateRequest.self,

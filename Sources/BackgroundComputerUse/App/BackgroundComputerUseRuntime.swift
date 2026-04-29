@@ -35,6 +35,10 @@ public final class BackgroundComputerUseRuntime {
         try services.listWindows(request)
     }
 
+    public func getAppState(_ request: GetAppStateRequest) throws -> GetAppStateResponse {
+        try services.getAppState(request)
+    }
+
     public func getWindowState(_ request: GetWindowStateRequest) throws -> GetWindowStateResponse {
         try services.getWindowState(request)
     }

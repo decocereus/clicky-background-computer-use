@@ -111,6 +111,14 @@ enum APIDocumentation {
                 nextSteps: ["Call get_window_state with the selected windowID."],
                 exampleRequest: #"{"app":"Safari"}"#
             )
+        case .getAppState:
+            return usage(
+                whenToUse: "Start an app-oriented computer-use session by resolving an app and reading its best current window.",
+                useAfter: ["Call list_apps, or already know an app name or bundleID."],
+                successSignals: ["selectedWindow is present and state contains screenshot, tree, stateToken, and notes."],
+                nextSteps: ["Use state.stateToken and state.tree targets with action tools, or call get_app_state again to re-observe."],
+                exampleRequest: #"{"app":"Safari","imageMode":"path","maxNodes":6500}"#
+            )
         case .getWindowState:
             return usage(
                 whenToUse: "Read the current visual and semantic state of a window before planning or verifying actions.",
@@ -293,7 +301,7 @@ enum APIDocumentation {
         switch id {
         case .getWindowState, .click, .scroll, .performSecondaryAction, .drag, .resize, .setWindowFrame, .typeText, .pressKey, .setValue:
             return true
-        case .health, .bootstrap, .routes, .listApps, .listWindows:
+        case .health, .bootstrap, .routes, .listApps, .listWindows, .getAppState:
             return false
         }
     }

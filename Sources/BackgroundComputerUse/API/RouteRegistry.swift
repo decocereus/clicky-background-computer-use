@@ -6,6 +6,7 @@ enum RouteID: String, CaseIterable {
     case routes
     case listApps = "list_apps"
     case listWindows = "list_windows"
+    case getAppState = "get_app_state"
     case getWindowState = "get_window_state"
     case click
     case scroll
@@ -120,6 +121,27 @@ enum RouteRegistry {
             ),
             implementationStatus: .implemented,
             notes: ["Stable derived window IDs use bundle ID, pid, launch date, and window number."]
+        ),
+        RouteDescriptorDTO(
+            id: RouteID.getAppState.rawValue,
+            method: "POST",
+            path: "/v1/get_app_state",
+            category: "state",
+            summary: "Resolve a target app to its best window and read that window's current state.",
+            execution: RouteExecutionPolicyDTO(
+                lane: .windowRead,
+                backgroundBehavior: .backgroundRequired,
+                focusStealPolicy: .forbidden,
+                mainThreadBehavior: .avoid,
+                readActRead: false,
+                allowsConcurrentClients: true,
+                notes: ["Convenience route for model clients that operate app-first instead of window-first."]
+            ),
+            implementationStatus: .implemented,
+            notes: [
+                "Selects the focused window first, then main, then on-screen, then first listed window.",
+                "Returns the selected window, all candidate windows, and the same state payload as get_window_state."
+            ]
         ),
         RouteDescriptorDTO(
             id: RouteID.getWindowState.rawValue,
@@ -304,6 +326,23 @@ enum RouteRegistry {
             return json([
                 field("app", "string", required: true, "App name, bundle ID, or target query.")
             ])
+        case RouteID.getAppState.rawValue:
+            return json([
+                field("app", "string", required: true, "App name, bundle ID, or target query."),
+                field("includeMenuBar", "boolean", defaultValue: "true"),
+                field("menuPath", "string[]", "Optional menu path to open before reading transient menu state, e.g. [\"File\"]."),
+                field("webTraversal", "visible | full", "Use full only for deep WebKit/Electron parity/debug traversal; visible keeps the fast AXVisibleChildren default for web areas.", defaultValue: "visible"),
+                field("maxNodes", "integer", defaultValue: "6500"),
+                field("imageMode", "path | base64 | omit", defaultValue: "path"),
+                field("includeRawScreenshot", "boolean", defaultValue: "false"),
+                field("debugMode", "none | summary | full", defaultValue: "none"),
+                field("debug", "boolean", defaultValue: "false"),
+                field("includeDiagnostics", "boolean"),
+                field("includePlatformProfile", "boolean"),
+                field("includeRawCapture", "boolean"),
+                field("includeSemanticTree", "boolean"),
+                field("includeProjectedTree", "boolean")
+            ])
         case RouteID.getWindowState.rawValue:
             return json([
                 field("window", "string", required: true, "Stable window ID from list_windows."),
@@ -466,6 +505,16 @@ enum RouteRegistry {
                 field("contractVersion", "string", required: true),
                 field("app", "AppReference", required: true),
                 field("windows", "WindowSummary[]", required: true),
+                field("notes", "string[]", required: true)
+            ])
+        case RouteID.getAppState.rawValue:
+            return json([
+                field("contractVersion", "string", required: true),
+                field("app", "AppReference", required: true),
+                field("selectedWindow", "WindowSummary", required: true),
+                field("windows", "WindowSummary[]", required: true),
+                field("state", "GetWindowStateResponse", required: true),
+                field("modelContext", "GetAppStateModelContext", required: true, "Compact model-facing summary, focused element, screenshot path, rendered tree, and next-action guidance."),
                 field("notes", "string[]", required: true)
             ])
         case RouteID.getWindowState.rawValue:
