@@ -47,6 +47,47 @@ struct RuntimeServices {
         }
     }
 
+    func getAppState(_ request: GetAppStateRequest) throws -> GetAppStateResponse {
+        try execute(
+            routeID: .getAppState,
+            target: RouteTargetSummaryDTO(kind: .appQuery, appQuery: request.app, windowID: nil)
+        ) {
+            let windows = try windowListService.listWindows(appQuery: request.app)
+            guard let selectedWindow = Self.selectBestWindow(from: windows.windows) else {
+                throw DiscoveryError.windowNotFound(request.app)
+            }
+            let state = try windowStateService.getWindowState(
+                request: GetWindowStateRequest(
+                    window: selectedWindow.windowID,
+                    includeMenuBar: request.includeMenuBar,
+                    menuPath: request.menuPath,
+                    webTraversal: request.webTraversal,
+                    maxNodes: request.maxNodes,
+                    imageMode: request.imageMode,
+                    includeRawScreenshot: request.includeRawScreenshot,
+                    debugMode: request.debugMode,
+                    debug: request.debug,
+                    includeRawCapture: request.includeRawCapture,
+                    includeSemanticTree: request.includeSemanticTree,
+                    includeProjectedTree: request.includeProjectedTree,
+                    includePlatformProfile: request.includePlatformProfile,
+                    includeDiagnostics: request.includeDiagnostics
+                )
+            )
+            return GetAppStateResponse(
+                contractVersion: ContractVersion.current,
+                app: windows.app,
+                selectedWindow: selectedWindow,
+                windows: windows.windows,
+                state: state,
+                modelContext: Self.makeModelContext(app: windows.app, selectedWindow: selectedWindow, state: state),
+                notes: windows.notes + [
+                    "Selected window using focused, main, on-screen, then first-window priority."
+                ]
+            )
+        }
+    }
+
     func getWindowState(_ request: GetWindowStateRequest) throws -> GetWindowStateResponse {
         try execute(routeID: .getWindowState, target: windowTarget(request.window)) {
             try windowStateService.getWindowState(request: request)
@@ -118,5 +159,74 @@ struct RuntimeServices {
 
     private func windowTarget(_ windowID: String) -> RouteTargetSummaryDTO {
         RouteTargetSummaryDTO(kind: .window, appQuery: nil, windowID: windowID)
+    }
+
+    private static func selectBestWindow(from windows: [WindowDTO]) -> WindowDTO? {
+        windows.first(where: \.isFocused) ??
+            windows.first(where: \.isMain) ??
+            windows.first(where: \.isOnScreen) ??
+            windows.first
+    }
+
+    private static func makeModelContext(
+        app: AppReferenceDTO,
+        selectedWindow: WindowDTO,
+        state: GetWindowStateResponse
+    ) -> GetAppStateModelContextDTO {
+        let focused = describeFocusedElement(state.focusedElement)
+        let screenshotPath = state.screenshot.image?.imagePath
+        let summary = "\(app.name) is open to window \"\(selectedWindow.title)\". The current state has \(state.tree.nodeCount) projected accessibility nodes and screenshot status \(state.screenshot.status)."
+        var nextActions = [
+            "Inspect modelContext.renderedTree and the screenshot before choosing an action.",
+            "Use state.stateToken with action tools that act on this observed state.",
+            "Prefer node_id or refetch_fingerprint targets from state.tree.nodes when available."
+        ]
+        if focused == nil {
+            nextActions.append("Focused element was not resolved; prefer an explicit semantic target from the tree before typing or pressing keys.")
+        }
+        return GetAppStateModelContextDTO(
+            summary: summary,
+            focusedElement: focused,
+            screenshotPath: screenshotPath,
+            screenshotStatus: state.screenshot.status,
+            renderedTree: modelFacingRenderedTree(state.tree.renderedText),
+            recommendedNextActions: nextActions
+        )
+    }
+
+    private static func modelFacingRenderedTree(_ renderedTree: String) -> String {
+        renderedTree
+            .replacingOccurrences(of: ", web_descendant", with: "")
+            .replacingOccurrences(of: "web_descendant, ", with: "")
+            .replacingOccurrences(of: " (web_descendant)", with: "")
+            .replacingOccurrences(of: "(web_descendant)", with: "")
+    }
+
+    private static func describeFocusedElement(_ focused: FocusedElementDTO) -> String? {
+        guard focused.index != nil ||
+                focused.displayRole != nil ||
+                focused.title != nil ||
+                focused.description != nil ||
+                focused.secondaryActions.isEmpty == false else {
+            return nil
+        }
+
+        var parts: [String] = []
+        if let index = focused.index {
+            parts.append("\(index)")
+        }
+        if let role = focused.displayRole, role.isEmpty == false {
+            parts.append(role)
+        }
+        if let title = focused.title, title.isEmpty == false {
+            parts.append("\"\(title)\"")
+        }
+        if let description = focused.description, description.isEmpty == false {
+            parts.append("Description: \(description)")
+        }
+        if focused.secondaryActions.isEmpty == false {
+            parts.append("Secondary Actions: \(focused.secondaryActions.joined(separator: ", "))")
+        }
+        return parts.joined(separator: " ")
     }
 }

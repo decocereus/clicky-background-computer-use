@@ -180,13 +180,10 @@ struct StatePipelineExperiment {
             includeCursorOverlay: options.includeCursorOverlay
         )
 
-        let focusedProjectedNode = projectedTree.focusedProjectedIndex.flatMap { projectedTree.nodes[safe: $0] }
-        let focusedElementDTO = FocusedElementDTO(
-            index: projectedTree.focusedDisplayIndex,
-            displayRole: focusedProjectedNode?.displayRole,
-            title: focusedProjectedNode?.label,
-            description: focusedProjectedNode?.metadata.first,
-            secondaryActions: focusedProjectedNode?.secondaryActions ?? []
+        let focusedElementDTO = makeFocusedElementDTO(
+            projectedTree: projectedTree,
+            semanticTree: semanticTree,
+            rawCapture: rawCapture
         )
 
         let responseNotes = buildNotes(
@@ -350,13 +347,10 @@ struct StatePipelineExperiment {
             includeCursorOverlay: includeCursorOverlay
         )
 
-        let focusedProjectedNode = projectedTree.focusedProjectedIndex.flatMap { projectedTree.nodes[safe: $0] }
-        let focusedElementDTO = FocusedElementDTO(
-            index: projectedTree.focusedDisplayIndex,
-            displayRole: focusedProjectedNode?.displayRole,
-            title: focusedProjectedNode?.label,
-            description: focusedProjectedNode?.metadata.first,
-            secondaryActions: focusedProjectedNode?.secondaryActions ?? []
+        let focusedElementDTO = makeFocusedElementDTO(
+            projectedTree: projectedTree,
+            semanticTree: semanticTree,
+            rawCapture: rawCapture
         )
 
         let options = StatePipelineLiveCaptureOptions(
@@ -477,8 +471,6 @@ struct StatePipelineExperiment {
             coordinateContract: nil,
             captureError: nil
         )
-        let focusedProjectedNode = projectedTree.focusedProjectedIndex.flatMap { projectedTree.nodes[safe: $0] }
-
         let surfaceTree = makeSurfaceTreeDTO(projectedTree: projectedTree, rawCapture: replayPreparation.rawCapture)
         let clickReadiness = AXClickReadinessSupport.metrics(for: surfaceTree.nodes)
 
@@ -489,12 +481,10 @@ struct StatePipelineExperiment {
             screenshot: screenshot,
             tree: surfaceTree,
             menuPresentation: replayPreparation.menuPresentation,
-            focusedElement: FocusedElementDTO(
-                index: projectedTree.focusedDisplayIndex,
-                displayRole: focusedProjectedNode?.displayRole,
-                title: focusedProjectedNode?.label,
-                description: focusedProjectedNode?.metadata.first,
-                secondaryActions: focusedProjectedNode?.secondaryActions ?? []
+            focusedElement: makeFocusedElementDTO(
+                projectedTree: projectedTree,
+                semanticTree: semanticTree,
+                rawCapture: replayPreparation.rawCapture
             ),
             selectionSummary: replayPreparation.rawCapture.focusSelection,
             backgroundSafety: BackgroundSafetyDTO(
@@ -827,6 +817,66 @@ struct StatePipelineExperiment {
 
         var seen = Set<String>()
         return sanitized.filter { seen.insert($0).inserted }
+    }
+
+    private func makeFocusedElementDTO(
+        projectedTree: AXProjectedTreeDTO,
+        semanticTree: AXSemanticTreeDTO,
+        rawCapture: AXRawCaptureResult
+    ) -> FocusedElementDTO {
+        if let focusedProjectedNode = projectedTree.focusedProjectedIndex.flatMap({ projectedTree.nodes[safe: $0] }) {
+            return FocusedElementDTO(
+                index: projectedTree.focusedDisplayIndex,
+                displayRole: focusedProjectedNode.displayRole,
+                title: focusedProjectedNode.label,
+                description: focusedProjectedNode.metadata.first,
+                secondaryActions: focusedProjectedNode.secondaryActions
+            )
+        }
+
+        if let focusedCanonicalIndex = rawCapture.focusedCanonicalIndex,
+           let semanticNode = semanticTree.nodes[safe: focusedCanonicalIndex] {
+            return FocusedElementDTO(
+                index: nil,
+                displayRole: semanticNode.displayRole,
+                title: semanticNode.intrinsicLabel ?? semanticNode.description,
+                description: semanticNode.description ?? semanticNode.rawRole ?? semanticNode.rawSubrole,
+                secondaryActions: rawCapture.nodes[safe: focusedCanonicalIndex]?.secondaryActions ?? []
+            )
+        }
+
+        if let focusedCanonicalIndex = rawCapture.focusedCanonicalIndex,
+           let rawNode = rawCapture.nodes[safe: focusedCanonicalIndex] {
+            return FocusedElementDTO(
+                index: nil,
+                displayRole: rawNode.roleDescription ?? rawNode.role ?? rawNode.subrole,
+                title: rawNode.title ?? rawNode.value.preview,
+                description: rawNode.description ?? rawNode.identifier ?? rawNode.url,
+                secondaryActions: rawNode.secondaryActions
+            )
+        }
+
+        if let webContentNode = projectedTree.nodes.first(where: { $0.displayRole == "HTML content" }) {
+            return FocusedElementDTO(
+                index: displayIndex(for: webContentNode.projectedIndex, in: projectedTree),
+                displayRole: webContentNode.displayRole,
+                title: webContentNode.label,
+                description: webContentNode.metadata.first ?? "Best-effort active web content surface because AX focus was not available.",
+                secondaryActions: webContentNode.secondaryActions
+            )
+        }
+
+        return FocusedElementDTO(
+            index: nil,
+            displayRole: nil,
+            title: nil,
+            description: nil,
+            secondaryActions: []
+        )
+    }
+
+    private func displayIndex(for projectedIndex: Int, in projectedTree: AXProjectedTreeDTO) -> Int? {
+        projectedTree.lineMappings.first(where: { $0.projectedIndex == projectedIndex })?.displayIndex
     }
 }
 

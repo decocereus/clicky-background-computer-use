@@ -26,6 +26,55 @@ $TMPDIR/background-computer-use/runtime-manifest.json
 
 The manifest includes `baseURL`, permission status, bootstrap instructions, and route summaries. Agents should read this file instead of assuming a fixed port.
 
+## MCP Server
+
+The package also exposes a stdio MCP server for model clients that support MCP:
+
+```bash
+swift run BackgroundComputerUseMCP
+```
+
+The MCP server uses the package route catalog as the source of truth for tool names, descriptions, and input schemas. It exposes the POST runtime routes as tools:
+
+- `list_apps`
+- `list_windows`
+- `get_app_state`
+- `get_window_state`
+- `click`
+- `scroll`
+- `perform_secondary_action`
+- `drag`
+- `resize`
+- `set_window_frame`
+- `type_text`
+- `press_key`
+- `set_value`
+
+It also exposes `background-computer-use://instructions` as a markdown MCP resource with model-facing operating guidance. The server executes through `BackgroundComputerUseRuntime` directly; it does not start or depend on the loopback HTTP server.
+
+Model clients should load the instruction resource and follow the same loop for every desktop task:
+
+1. Observe with `get_app_state`, or `list_windows` plus `get_window_state` when a specific window is needed.
+2. Choose a target from the latest state. Prefer `node_id` or `refetch_fingerprint`; use `display_index` when the rendered tree is the clearest reference.
+3. Call exactly one action with the current `window` and, when available, the current `stateToken`.
+4. Inspect the action response, then re-observe before planning the next meaningful action.
+
+`get_app_state` returns three MCP content blocks when screenshot capture succeeds: model-facing text, an inline `image/png`, and raw structured JSON. The raw JSON contains `selectedWindow.windowID`, `state.stateToken`, and detailed state/action fields. For `type_text`, valid `focusAssistMode` values are `none`, `focus`, and `focus_and_caret_end`; omit `target` only when the focused element is clearly the desired text entry.
+
+For MCP clients that launch servers from config:
+
+```json
+{
+  "mcpServers": {
+    "background-computer-use": {
+      "command": "swift",
+      "args": ["run", "BackgroundComputerUseMCP"],
+      "cwd": "/path/to/background-computer-use"
+    }
+  }
+}
+```
+
 ## Signing And Permissions
 
 Since the app requires accessibility + screenshot permissions, you need to sign (self-sign ok) the app after building 
@@ -92,7 +141,7 @@ macOS permissions attach to the signed host application. The bundled HTTP runtim
 3. `GET /v1/routes`
 4. `POST /v1/list_apps`
 5. `POST /v1/list_windows`
-6. `POST /v1/get_window_state`
+6. `POST /v1/get_app_state` for app-oriented clients, or `POST /v1/get_window_state` when you already have a window ID.
 7. Act with `/v1/click`, `/v1/scroll`, `/v1/type_text`, `/v1/press_key`, `/v1/set_value`, `/v1/perform_secondary_action`, `/v1/drag`, `/v1/resize`, or `/v1/set_window_frame`.
 8. Read state again.
 
@@ -111,6 +160,7 @@ Core routes:
 - `GET /v1/routes`
 - `POST /v1/list_apps`
 - `POST /v1/list_windows`
+- `POST /v1/get_app_state`
 - `POST /v1/get_window_state`
 - `POST /v1/click`
 - `POST /v1/scroll`

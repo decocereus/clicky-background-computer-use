@@ -20,6 +20,7 @@ struct RuntimeFacadePublicAPITests {
         let target = try ActionTargetRequestDTO.displayIndex(3)
 
         let listWindows = ListWindowsRequest(app: "Safari")
+        let appState = GetAppStateRequest(app: "Safari", imageMode: .path)
         let state = GetWindowStateRequest(window: "window-id", imageMode: .path)
         let click = ClickRequest(window: "window-id", target: target, clickCount: 1, cursor: cursor)
         let coordinateClick = ClickRequest(window: "window-id", x: 10, y: 20)
@@ -33,6 +34,8 @@ struct RuntimeFacadePublicAPITests {
         let setValue = SetValueRequest(window: "window-id", target: target, value: "hello")
 
         #expect(listWindows.app == "Safari")
+        #expect(appState.app == "Safari")
+        #expect(appState.imageMode == .path)
         #expect(state.imageMode == .path)
         #expect(click.target?.displayIndex == 3)
         #expect(coordinateClick.x == 10)
