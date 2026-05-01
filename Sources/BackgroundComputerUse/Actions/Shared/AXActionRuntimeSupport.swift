@@ -509,6 +509,66 @@ enum AXActionRuntimeSupport {
         return true
     }
 
+    static func postPasteText(_ text: String, to pid: pid_t, restoreDelay: TimeInterval = 0.20) -> Bool {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            return false
+        }
+
+        let pasteboard = NSPasteboard.general
+        let previousItems = clonePasteboardItems(pasteboard.pasteboardItems ?? [])
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string) else {
+            restorePasteboardItems(previousItems, to: pasteboard)
+            return false
+        }
+        let ownedChangeCount = pasteboard.changeCount
+
+        let posted = postKeyCommand(virtualKey: 9, flags: .maskCommand, source: source, to: pid)
+        sleepRunLoop(restoreDelay)
+        if pasteboard.changeCount == ownedChangeCount {
+            restorePasteboardItems(previousItems, to: pasteboard)
+        }
+        return posted
+    }
+
+    private static func postKeyCommand(
+        virtualKey: CGKeyCode,
+        flags: CGEventFlags,
+        source: CGEventSource,
+        to pid: pid_t
+    ) -> Bool {
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false) else {
+            return false
+        }
+
+        down.flags = flags
+        up.flags = flags
+        down.postToPid(pid)
+        up.postToPid(pid)
+        return true
+    }
+
+    private static func clonePasteboardItems(_ items: [NSPasteboardItem]) -> [NSPasteboardItem] {
+        items.map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    copy.setData(data, forType: type)
+                }
+            }
+            return copy
+        }
+    }
+
+    private static func restorePasteboardItems(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        guard items.isEmpty == false else {
+            return
+        }
+        pasteboard.writeObjects(items)
+    }
+
     static func signature(for element: AXUIElement) -> AXActionRefetchSignature {
         let urlValue = stringAttribute(element, attribute: kAXURLAttribute as CFString)
         return AXActionRefetchSignature(

@@ -4,10 +4,19 @@ import Testing
 @Suite
 struct TypeTextDispatchPolicyTests {
     @Test
-    func webTargetsUseKeyboardEventDispatch() {
+    func webTargetsUsePasteDispatch() {
         let target = makeTarget(rawRole: "AXTextArea", url: "https://x.com/home")
 
         #expect(TypeTextRouteService.prefersElementValueDispatch(for: target) == false)
+        #expect(TypeTextRouteService.prefersPasteDispatch(for: target))
+    }
+
+    @Test
+    func webAreaTargetsUsePasteDispatch() {
+        let target = makeTarget(rawRole: "AXWebArea", url: nil)
+
+        #expect(TypeTextRouteService.prefersElementValueDispatch(for: target) == false)
+        #expect(TypeTextRouteService.prefersPasteDispatch(for: target))
     }
 
     @Test
@@ -15,6 +24,7 @@ struct TypeTextDispatchPolicyTests {
         let target = makeTarget(rawRole: "AXTextField", url: nil)
 
         #expect(TypeTextRouteService.prefersElementValueDispatch(for: target))
+        #expect(TypeTextRouteService.prefersPasteDispatch(for: target) == false)
     }
 
     private func makeTarget(rawRole: String?, url: String?) -> AXActionTargetSnapshot {

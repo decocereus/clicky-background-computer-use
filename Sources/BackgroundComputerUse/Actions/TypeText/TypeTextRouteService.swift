@@ -5,6 +5,7 @@ struct TypeTextRouteService {
     private let executionOptions: ActionExecutionOptions
     private let targetResolver: AXActionTargetResolver
     private let dispatchPrimitive = "CGEvent.keyboardSetUnicodeString + postToPid"
+    private let pasteDispatchPrimitive = "NSPasteboard.string + Command-V postToPid"
     private let elementValueDispatchPrimitive = "AXUIElementSetAttributeValue(kAXValueAttribute) + AXUIElementSetAttributeValue(kAXSelectedTextRangeAttribute)"
     private let settleDelay: TimeInterval = 0.35
 
@@ -325,10 +326,20 @@ struct TypeTextRouteService {
             return TextDispatchResult(succeeded: true, primitive: elementValueDispatchPrimitive)
         }
 
+        if Self.prefersPasteDispatch(for: target) {
+            if expected?.valueString == nil {
+                notes.append("Exact inserted value could not be computed; type_text used paste dispatch for the web/editor-like target.")
+            } else {
+                notes.append("Target is web/editor-like; type_text used clipboard-preserving paste dispatch so the app receives paste/input events.")
+            }
+            return TextDispatchResult(
+                succeeded: AXActionRuntimeSupport.postPasteText(text, to: pid),
+                primitive: pasteDispatchPrimitive
+            )
+        }
+
         if expected?.valueString == nil {
             notes.append("Exact inserted value could not be computed; type_text used PID-scoped Unicode posting.")
-        } else if Self.prefersElementValueDispatch(for: target) == false {
-            notes.append("Target is web/editor-like; type_text used PID-scoped Unicode posting so the app receives keyboard input events.")
         } else {
             notes.append("Live AX value was not writable; type_text used PID-scoped Unicode posting.")
         }
@@ -339,6 +350,10 @@ struct TypeTextRouteService {
     }
 
     static func prefersElementValueDispatch(for target: AXActionTargetSnapshot) -> Bool {
+        prefersPasteDispatch(for: target) == false
+    }
+
+    static func prefersPasteDispatch(for target: AXActionTargetSnapshot) -> Bool {
         let roleValues = [
             target.displayRole,
             target.rawRole,
@@ -348,13 +363,13 @@ struct TypeTextRouteService {
         .joined(separator: " ")
 
         if target.url != nil {
-            return false
+            return true
         }
         if roleValues.contains("axwebarea") || roleValues.contains("web area") {
-            return false
+            return true
         }
 
-        return true
+        return false
     }
 
     private func applyFocusAssistIfRequested(
