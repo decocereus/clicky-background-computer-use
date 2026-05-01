@@ -8,7 +8,7 @@ enum APIDocumentation {
             "Call GET /v1/routes for the complete route catalog, request fields, response fields, execution policy, examples, and error codes.",
             "Call POST /v1/list_apps to find a target app, then POST /v1/list_windows with an app name or bundle ID.",
             "Call POST /v1/get_window_state with a window ID and imageMode path or base64. Use the screenshot as visual ground truth and the projected tree for semantic targets.",
-            "Call one action route. Reuse stateToken when available, pass a cursor object if you want a visible agent cursor, then read state again before planning the next meaningful action."
+            "Call one action route. Reuse stateToken when available. For user-visible actions, pass a stable cursor object so the user can see what is happening, then read state again before planning the next meaningful action."
         ],
         concepts: [
             APIConceptDTO(
@@ -40,7 +40,7 @@ enum APIDocumentation {
             ),
             APIConceptDTO(
                 name: "CursorRequest",
-                description: "Optional visible cursor session for action routes. Reuse id across related calls to move the same cursor.",
+                description: "Recommended visible cursor session for user-facing action routes. Reuse id across related calls to move the same cursor; omit only for intentionally invisible/background actions.",
                 fields: [
                     RouteFieldDTO(name: "id", type: "string", required: false, description: "Stable cursor session ID, for example agent-1.", defaultValue: nil),
                     RouteFieldDTO(name: "name", type: "string", required: false, description: "Short label displayed with the cursor.", defaultValue: nil),
@@ -133,7 +133,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and identify a target or x/y coordinate."],
                 successSignals: ["ok=true and classification=success, or inspect summary/failureDomain when ok=false."],
                 nextSteps: ["Read get_window_state again when the UI may have changed."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":12},"clickCount":1,"imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":12},"clickCount":1,"cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         case .scroll:
             return usage(
@@ -141,7 +141,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and choose a target in or near the scrollable region."],
                 successSignals: ["classification=success for movement, boundary for a real edge, or issueBucket explains unresolved failures."],
                 nextSteps: ["Use postStateToken or read state again before targeting newly visible content."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":20},"direction":"down","pages":1,"imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":20},"direction":"down","pages":1,"cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         case .performSecondaryAction:
             return usage(
@@ -149,7 +149,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and read the target node's secondaryActions or secondaryActionBindings."],
                 successSignals: ["ok=true and outcome.status indicates the expected effect was verified or accepted."],
                 nextSteps: ["Inspect postState or read state again, especially for menus or visual changes."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":8},"action":"Close","imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":8},"action":"Close","cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         case .drag:
             return usage(
@@ -157,7 +157,7 @@ enum APIDocumentation {
                 useAfter: ["Call list_windows and choose a windowID."],
                 successSignals: ["ok=true, action.effectVerified=true, and window.frameAfterAppKit reflects the requested movement."],
                 nextSteps: ["Use get_window_state or list_windows to confirm final layout when needed."],
-                exampleRequest: #"{"window":"WINDOW_ID","toX":120,"toY":90}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","toX":120,"toY":90,"cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"}}"##
             )
         case .resize:
             return usage(
@@ -165,7 +165,7 @@ enum APIDocumentation {
                 useAfter: ["Call list_windows and choose a windowID."],
                 successSignals: ["ok=true, action.effectVerified=true, and window.frameAfterAppKit changed as intended."],
                 nextSteps: ["Use get_window_state or list_windows to confirm final layout when needed."],
-                exampleRequest: #"{"window":"WINDOW_ID","handle":"bottomRight","toX":1200,"toY":800}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","handle":"bottomRight","toX":1200,"toY":800,"cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"}}"##
             )
         case .setWindowFrame:
             return usage(
@@ -173,7 +173,7 @@ enum APIDocumentation {
                 useAfter: ["Call list_windows and choose a windowID."],
                 successSignals: ["ok=true, action.effectVerified=true, and frameAfterAppKit matches x/y/width/height within platform tolerance."],
                 nextSteps: ["Read state again if you will interact with content after resizing."],
-                exampleRequest: #"{"window":"WINDOW_ID","x":80,"y":80,"width":1200,"height":800,"animate":true}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","x":80,"y":80,"width":1200,"height":800,"animate":true,"cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"}}"##
             )
         case .typeText:
             return usage(
@@ -181,7 +181,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and identify a text-entry target, or deliberately rely on the current focused element."],
                 successSignals: ["ok=true and verification exact value or selection evidence matches the requested text."],
                 nextSteps: ["Use press_key for explicit Return/Tab submission; type_text does not auto-submit."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"text":"hello","focusAssistMode":"focus_and_caret_end","imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"text":"hello","focusAssistMode":"focus_and_caret_end","cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         case .pressKey:
             return usage(
@@ -189,7 +189,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state when you need to verify focus, selection, or text effects."],
                 successSignals: ["ok=true and action.route plus verification explain whether a semantic or native key path worked."],
                 nextSteps: ["Read state again when the key may open UI, move focus, or change text.", "If native key delivery is attempted but no effect is verified, first perform a safe click in the target content surface, then retry press_key."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","key":"command+f","imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","key":"command+f","cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         case .setValue:
             return usage(
@@ -197,7 +197,7 @@ enum APIDocumentation {
                 useAfter: ["Call get_window_state and choose a target whose node reports value-set support."],
                 successSignals: ["ok=true and verification exactValueMatch is true."],
                 nextSteps: ["Use type_text instead when you need keystroke semantics, focus movement, autocomplete, or submission behavior."],
-                exampleRequest: #"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"value":"hello","imageMode":"path"}"#
+                exampleRequest: ##"{"window":"WINDOW_ID","stateToken":"STATE_TOKEN","target":{"kind":"display_index","value":4},"value":"hello","cursor":{"id":"agent-1","name":"Clicky","color":"#3478F6"},"imageMode":"path"}"##
             )
         }
     }

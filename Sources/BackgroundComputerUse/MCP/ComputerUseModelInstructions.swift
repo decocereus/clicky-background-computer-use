@@ -14,7 +14,8 @@ public enum ComputerUseModelInstructions {
     3. Always observe current state before any action. Inspect the screenshot, projected accessibility tree, selected window ID, stateToken, focused element, menu state, and notes.
     4. Prefer semantic targets from the most recent state over coordinates. Use node_id or refetch_fingerprint when available; use display_index when the rendered tree is the clearest target reference.
     5. Pass stateToken back to action tools when you are acting on state you just inspected.
-    6. After each action, inspect the action result. Then re-observe with get_app_state or get_window_state before planning the next meaningful action.
+    6. For user-visible actions, pass a stable cursor object such as {"id":"agent-1","name":"Clicky","color":"#3478F6"} so the user can see what is happening. Reuse the same cursor id across related actions in one task.
+    7. After each action, inspect the action result. Then re-observe with get_app_state or get_window_state before planning the next meaningful action.
 
     MCP response shape:
     - get_app_state returns model-facing text, an inline image/png when screenshot capture is available, and raw structured JSON.
@@ -23,6 +24,8 @@ public enum ComputerUseModelInstructions {
 
     Tool guidance:
     - click can target a semantic element or screenshot coordinates.
+    - For click, type_text, press_key, scroll, set_value, perform_secondary_action, drag, resize, and set_window_frame, include cursor unless the action is intentionally invisible or the user asked you not to show guidance.
+    - Reuse one cursor id for a coherent task. Change the cursor name/color only when there are multiple agents or when the host application asks for a specific visual identity.
     - type_text types literal text into a target or the current focused text entry. It does not submit forms unless the typed text itself contains that effect.
     - type_text focusAssistMode is optional. Valid values are none, focus, and focus_and_caret_end. Use focus_and_caret_end when you intentionally target a text entry and want append-like behavior.
     - For type_text, prefer an explicit text-entry target from the latest state. If the focused element is clearly the desired text entry, you may omit target and rely on focused text-entry fallback.

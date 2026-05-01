@@ -373,7 +373,7 @@ enum RouteRegistry {
                 field("direction", "up | down | left | right", required: true),
                 field("pages", "integer"),
                 field("verificationMode", "strict | fast"),
-                field("cursor", "CursorRequest"),
+                cursorRequestField(),
                 field("includeMenuBar", "boolean"),
                 field("maxNodes", "integer"),
                 field("imageMode", "path | base64 | omit"),
@@ -391,7 +391,7 @@ enum RouteRegistry {
                 field("actionID", "string", "Optional stable descriptor ID from secondaryActionBindings; resolves before label fallback."),
                 field("menuPath", "string[]", "Optional menu path to open during the pre-action read, e.g. [\"File\"]."),
                 field("webTraversal", "visible | full", "Use full only for deep WebKit/Electron parity/debug traversal; visible keeps the fast AXVisibleChildren default for web areas.", defaultValue: "visible"),
-                field("cursor", "CursorRequest"),
+                cursorRequestField(),
                 field("includeMenuBar", "boolean"),
                 field("maxNodes", "integer"),
                 field("imageMode", "path | base64 | omit"),
@@ -402,7 +402,7 @@ enum RouteRegistry {
                 field("window", "string", required: true),
                 field("toX", "number", required: true),
                 field("toY", "number", required: true),
-                field("cursor", "CursorRequest")
+                cursorRequestField()
             ])
         case RouteID.resize.rawValue:
             return json([
@@ -410,7 +410,7 @@ enum RouteRegistry {
                 field("handle", "ResizeHandle", required: true),
                 field("toX", "number", required: true),
                 field("toY", "number", required: true),
-                field("cursor", "CursorRequest")
+                cursorRequestField()
             ])
         case RouteID.setWindowFrame.rawValue:
             return json([
@@ -420,7 +420,7 @@ enum RouteRegistry {
                 field("width", "number", required: true),
                 field("height", "number", required: true),
                 field("animate", "boolean", defaultValue: "true"),
-                field("cursor", "CursorRequest")
+                cursorRequestField()
             ])
         case RouteID.typeText.rawValue:
             return json([
@@ -432,7 +432,7 @@ enum RouteRegistry {
                 ),
                 field("text", "string", required: true),
                 field("focusAssistMode", "none | focus | focus_and_caret_end", defaultValue: "none"),
-                field("cursor", "CursorRequest"),
+                cursorRequestField(),
                 field("includeMenuBar", "boolean"),
                 field("maxNodes", "integer"),
                 field("imageMode", "path | base64 | omit"),
@@ -443,7 +443,7 @@ enum RouteRegistry {
                 field("window", "string", required: true),
                 field("stateToken", "string"),
                 field("key", "string", required: true),
-                field("cursor", "CursorRequest"),
+                cursorRequestField(),
                 field("includeMenuBar", "boolean"),
                 field("maxNodes", "integer"),
                 field("imageMode", "path | base64 | omit"),
@@ -458,7 +458,7 @@ enum RouteRegistry {
                     "Semantic target that reports value-set support."
                 ),
                 field("value", "string", required: true),
-                field("cursor", "CursorRequest"),
+                cursorRequestField(),
                 field("includeMenuBar", "boolean"),
                 field("maxNodes", "integer"),
                 field("imageMode", "path | base64 | omit"),
@@ -588,7 +588,7 @@ enum RouteRegistry {
             field("mode", "single | double", "Explicit click mode. Omitted mode defaults to single.", defaultValue: "single"),
             field("clickCount", "integer", "Explicit exact click count. Supported values are 1 and 2."),
             field("mouseButton", "left | right | middle", defaultValue: "left"),
-            field("cursor", "CursorRequest"),
+            cursorRequestField(),
             field("includeMenuBar", "boolean"),
             field("maxNodes", "integer"),
             field("imageMode", "path | base64 | omit"),
@@ -763,6 +763,14 @@ enum RouteRegistry {
             #"{"kind":"display_index"|"node_id"|"refetch_fingerprint","value":integer|string}"#,
             required: required,
             description
+        )
+    }
+
+    private static func cursorRequestField() -> RouteFieldDTO {
+        field(
+            "cursor",
+            "CursorRequest",
+            "Recommended for user-visible actions. Reuse a stable id across a task, for example {\"id\":\"agent-1\",\"name\":\"Clicky\",\"color\":\"#3478F6\"}. Omit only for intentionally invisible/background actions."
         )
     }
 
