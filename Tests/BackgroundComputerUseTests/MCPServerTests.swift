@@ -57,7 +57,8 @@ struct MCPServerTests {
         #expect(first["mimeType"] as? String == "text/markdown")
         #expect((first["text"] as? String)?.contains("Always observe current state before any action") == true)
         #expect((first["text"] as? String)?.contains("Valid values are none, focus, and focus_and_caret_end") == true)
-        #expect((first["text"] as? String)?.contains("re-observe with get_app_state or get_window_state") == true)
+        #expect((first["text"] as? String)?.contains("Re-observe only when the next target depends on updated UI") == true)
+        #expect((first["text"] as? String)?.contains("Avoid repeated get_app_state calls") == true)
     }
 
     private func parseObject(_ line: String) throws -> [String: Any] {
