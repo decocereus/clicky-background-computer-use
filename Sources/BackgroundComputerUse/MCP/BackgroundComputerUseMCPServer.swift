@@ -7,7 +7,9 @@ public final class BackgroundComputerUseMCPServer {
     private let errorOutput: LineOutputStream
 
     public init(
-        runtime: BackgroundComputerUseRuntime = BackgroundComputerUseRuntime(),
+        runtime: BackgroundComputerUseRuntime = BackgroundComputerUseRuntime(
+            options: BackgroundComputerUseRuntimeOptions(visualCursor: .enabled)
+        ),
         input: LineInputStream = StandardInputStream(),
         output: LineOutputStream = StandardOutputStream(),
         errorOutput: LineOutputStream = StandardErrorStream()

@@ -149,6 +149,7 @@ struct TypeTextRouteService {
         let dispatchResult = dispatchText(
             request.text,
             expected: expected,
+            target: target,
             to: liveElement.element,
             pid: capture.envelope.response.window.pid,
             warnings: &warnings,
@@ -288,12 +289,14 @@ struct TypeTextRouteService {
     private func dispatchText(
         _ text: String,
         expected: TypeTextExpectedOutcomeDTO?,
+        target: AXActionTargetSnapshot,
         to element: AXUIElement,
         pid: pid_t,
         warnings: inout [String],
         notes: inout [String]
     ) -> TextDispatchResult {
         if let expectedValue = expected?.valueString,
+           Self.prefersElementValueDispatch(for: target),
            AXActionRuntimeSupport.isAttributeSettable(element, attribute: kAXValueAttribute as CFString) {
             notes.append("Using element-bound AX value write for type_text to avoid process-scoped same-app window routing.")
             let valueResult = AXActionRuntimeSupport.setValue(.string(expectedValue), on: element)
@@ -324,6 +327,8 @@ struct TypeTextRouteService {
 
         if expected?.valueString == nil {
             notes.append("Exact inserted value could not be computed; type_text used PID-scoped Unicode posting.")
+        } else if Self.prefersElementValueDispatch(for: target) == false {
+            notes.append("Target is web/editor-like; type_text used PID-scoped Unicode posting so the app receives keyboard input events.")
         } else {
             notes.append("Live AX value was not writable; type_text used PID-scoped Unicode posting.")
         }
@@ -331,6 +336,25 @@ struct TypeTextRouteService {
             succeeded: AXActionRuntimeSupport.postUnicodeText(text, to: pid),
             primitive: dispatchPrimitive
         )
+    }
+
+    static func prefersElementValueDispatch(for target: AXActionTargetSnapshot) -> Bool {
+        let roleValues = [
+            target.displayRole,
+            target.rawRole,
+            target.rawSubrole,
+        ]
+        .compactMap { $0?.lowercased() }
+        .joined(separator: " ")
+
+        if target.url != nil {
+            return false
+        }
+        if roleValues.contains("axwebarea") || roleValues.contains("web area") {
+            return false
+        }
+
+        return true
     }
 
     private func applyFocusAssistIfRequested(
